@@ -1,0 +1,17 @@
+plugins {
+    id 'java-library'
+}
+
+
+sourceCompatibility=1.8
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    //see if this should be compileOnly
+    implementation 'org.apache.kafka:kafka-clients:2.2.1'
+}
+
+version = '0.0.1'
