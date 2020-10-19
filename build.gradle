@@ -11,7 +11,7 @@ repositories {
 
 dependencies {
     //see if this should be compileOnly
-    implementation 'org.apache.kafka:kafka-clients:2.2.1'
+    compileOnly 'org.apache.kafka:kafka-clients:2.2.1'
 }
 
 version = '0.0.1'
