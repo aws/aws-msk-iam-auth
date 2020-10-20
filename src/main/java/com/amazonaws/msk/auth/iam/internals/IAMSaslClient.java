@@ -2,7 +2,6 @@ package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.msk.auth.iam.IAMLoginModule;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
-import org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,6 +12,8 @@ import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslClientFactory;
 import javax.security.sasl.SaslException;
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -27,12 +28,14 @@ public class IAMSaslClient implements SaslClient {
     private final String mechanism;
     private final CallbackHandler cbh;
     private final String serverName;
+    private final Clock clock;
     private State state;
 
-    public IAMSaslClient(String mechanism, CallbackHandler cbh, String serverName) {
+    public IAMSaslClient(String mechanism, CallbackHandler cbh, String serverName, Clock clock) {
         this.mechanism = mechanism;
         this.cbh = cbh;
         this.serverName = serverName;
+        this.clock = clock;
         setState(State.SEND_CLIENT_FIRST_MESSAGE);
     }
 
@@ -61,6 +64,8 @@ public class IAMSaslClient implements SaslClient {
                     cbh.handle(new Callback[]{callback});
                     if (callback.isSuccessful()) {
                         //TODO: signing etc
+                        AuthenticationRequestParams requestParams = AuthenticationRequestParams.create(serverName, callback.getAwsCredentials(), Instant
+                                .now(clock));
                         log.debug(callback.getAwsCredentials().getAWSAccessKeyId());
                     } else {
                         throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
@@ -76,7 +81,7 @@ public class IAMSaslClient implements SaslClient {
         } catch (SaslException se) {
             setState(State.FAILED);
             throw se;
-        } catch (IOException | UnsupportedCallbackException e) {
+        } catch (IOException | IllegalArgumentException | UnsupportedCallbackException e) {
             setState(State.FAILED);
             throw new SaslException("Exception while evaluating challenge", e);
         } finally {
@@ -139,7 +144,7 @@ public class IAMSaslClient implements SaslClient {
                 CallbackHandler cbh) throws SaslException {
             for (String mechanism : mechanisms) {
                 if (IAMLoginModule.MECHANISM.equals(mechanism)) {
-                    return new IAMSaslClient(mechanism, cbh, serverName);
+                    return new IAMSaslClient(mechanism, cbh, serverName, Clock.systemUTC());
                 }
             }
             throw new SaslException(
