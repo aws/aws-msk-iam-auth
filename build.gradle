@@ -2,6 +2,7 @@ plugins {
     id 'java-library'
 }
 
+version = '0.0.1'
 
 sourceCompatibility=1.8
 
@@ -9,9 +10,21 @@ repositories {
     mavenCentral()
 }
 
+
 dependencies {
     //see if this should be compileOnly
-    compileOnly 'org.apache.kafka:kafka-clients:2.2.1'
+    compileOnly ('org.apache.kafka:kafka-clients:2.2.1')
+    // aws sdk imports.
+    implementation (platform('com.amazonaws:aws-java-sdk-bom:1.11.882'))
+    implementation ('com.amazonaws:aws-java-sdk-core')
+
+    //test dependencies
+    testImplementation ('org.apache.kafka:kafka-clients:2.2.1', 'org.junit.jupiter:junit-jupiter-api:5.7.0')
+    testRuntimeOnly ('org.junit.jupiter:junit-jupiter-engine:5.7.0')
 }
 
-version = '0.0.1'
+test {
+    useJUnitPlatform()
+}
+
+
