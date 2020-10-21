@@ -11,7 +11,7 @@ public class AWS4RequestSignerTest {
     @Test
     public void demoTest() {
         AWS4RequestSigner signer = new AWS4RequestSigner();
-        signer.sign(AuthenticationRequestParams.create("b-3.statatat-test.bhowhu.kafka.us-west-2.amazonaws.com",new DefaultAWSCredentialsProviderChain().getCredentials(),
-                Instant.now()));
+        signer.sign(AuthenticationRequestParams.create("b-3.statatat-test.bhowhu.kafka.us-west-2.amazonaws.com",
+                new DefaultAWSCredentialsProviderChain().getCredentials()));
     }
 }

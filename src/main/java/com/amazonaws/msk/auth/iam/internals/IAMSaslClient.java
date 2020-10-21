@@ -28,14 +28,12 @@ public class IAMSaslClient implements SaslClient {
     private final String mechanism;
     private final CallbackHandler cbh;
     private final String serverName;
-    private final Clock clock;
     private State state;
 
-    public IAMSaslClient(String mechanism, CallbackHandler cbh, String serverName, Clock clock) {
+    public IAMSaslClient(String mechanism, CallbackHandler cbh, String serverName) {
         this.mechanism = mechanism;
         this.cbh = cbh;
         this.serverName = serverName;
-        this.clock = clock;
         setState(State.SEND_CLIENT_FIRST_MESSAGE);
     }
 
@@ -64,8 +62,7 @@ public class IAMSaslClient implements SaslClient {
                     cbh.handle(new Callback[]{callback});
                     if (callback.isSuccessful()) {
                         //TODO: signing etc
-                        AuthenticationRequestParams requestParams = AuthenticationRequestParams.create(serverName, callback.getAwsCredentials(), Instant
-                                .now(clock));
+                        AuthenticationRequestParams requestParams = AuthenticationRequestParams.create(serverName, callback.getAwsCredentials());
                         log.debug(callback.getAwsCredentials().getAWSAccessKeyId());
                     } else {
                         throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
@@ -144,7 +141,7 @@ public class IAMSaslClient implements SaslClient {
                 CallbackHandler cbh) throws SaslException {
             for (String mechanism : mechanisms) {
                 if (IAMLoginModule.MECHANISM.equals(mechanism)) {
-                    return new IAMSaslClient(mechanism, cbh, serverName, Clock.systemUTC());
+                    return new IAMSaslClient(mechanism, cbh, serverName);
                 }
             }
             throw new SaslException(
