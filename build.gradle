@@ -17,6 +17,8 @@ dependencies {
     // aws sdk imports.
     implementation (platform('com.amazonaws:aws-java-sdk-bom:1.11.882'))
     implementation ('com.amazonaws:aws-java-sdk-core')
+    //TODO: move to latest version of jackson
+    implementation ('com.fasterxml.jackson.core:jackson-databind:2.6.7')
 
     //test dependencies
     testImplementation ('org.apache.kafka:kafka-clients:2.2.1', 'org.junit.jupiter:junit-jupiter-api:5.7.0')
