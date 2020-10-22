@@ -1,8 +1,7 @@
-package com.amazonaws.msk.auth.iam.internals;
+package com.amazonaws.msk.auth.iam;
 
-import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.msk.auth.iam.IAMLoginModule;
+import com.amazonaws.msk.auth.iam.internals.AWSCredentialsCallback;
 import org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,8 +13,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-public class IAMSaslClientCallbackHandler implements AuthenticateCallbackHandler {
-    private static final Logger log = LoggerFactory.getLogger(IAMSaslClientCallbackHandler.class);
+public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
+    private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
 
     @Override
     public void configure(Map<String, ?> configs, String saslMechanism, List<AppConfigurationEntry> jaasConfigEntries) {

@@ -1,6 +1,7 @@
 package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.msk.auth.iam.IAMClientCallbackHandler;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.junit.jupiter.api.Test;
 
@@ -11,7 +12,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import javax.security.sasl.SaslClient;
-import javax.security.sasl.SaslClientFactory;
 import javax.security.sasl.SaslException;
 import java.util.Collections;
 
@@ -81,7 +81,7 @@ public class IAMSaslClientTest {
                         new SuccessfulIAMCallbackHandler(new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY"))));
     }
 
-    private static class SuccessfulIAMCallbackHandler extends IAMSaslClientCallbackHandler {
+    private static class SuccessfulIAMCallbackHandler extends IAMClientCallbackHandler {
         private final BasicAWSCredentials basicAWSCredentials;
 
         public SuccessfulIAMCallbackHandler(BasicAWSCredentials basicAWSCredentials) {
@@ -101,7 +101,7 @@ public class IAMSaslClientTest {
                         new SuccessfulIAMCallbackHandler(new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY")));
     }
 
-    private static class FailureIAMCallbackHandler extends IAMSaslClientCallbackHandler {
+    private static class FailureIAMCallbackHandler extends IAMClientCallbackHandler {
         @Override
         protected void handleCallback(AWSCredentialsCallback callback) {
             callback.setLoadingException(new IllegalArgumentException("TEST Exception"));

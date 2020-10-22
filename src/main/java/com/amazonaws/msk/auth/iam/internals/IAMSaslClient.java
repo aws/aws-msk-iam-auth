@@ -128,7 +128,9 @@ public class IAMSaslClient implements SaslClient {
     }
 
     private void setState(State state) {
-        log.debug("Setting SASL/{} client state to {}", mechanism, state);
+        if (log.isDebugEnabled()) {
+            log.debug("Setting SASL/{} client state to {}", mechanism, state);
+        }
         this.state = state;
     }
 
