@@ -43,7 +43,6 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         try {
             callback.setAwsCredentials(DefaultAWSCredentialsProviderChain.getInstance().getCredentials());
         } catch (Exception e) {
-
             callback.setLoadingException(e);
         }
     }
