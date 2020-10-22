@@ -41,8 +41,6 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     }
 
     private AWS4Signer getConfiguredSigner(AuthenticationRequestParams params) {
-        //TODO: check if this is too heavy to spin up every time.
-        //There are some risks with static since a jvm might talk to different clusters with different creds and regions.
         final AWS4Signer aws4Signer = new AWS4Signer();
         aws4Signer.setServiceName(params.getServiceScope());
         aws4Signer.setRegionName(params.getRegion().getName());

@@ -12,8 +12,6 @@ import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslClientFactory;
 import javax.security.sasl.SaslException;
 import java.io.IOException;
-import java.time.Clock;
-import java.time.Instant;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -28,12 +26,17 @@ public class IAMSaslClient implements SaslClient {
     private final String mechanism;
     private final CallbackHandler cbh;
     private final String serverName;
+    private final SignedPayloadGenerator payloadGenerator;
     private State state;
 
-    public IAMSaslClient(String mechanism, CallbackHandler cbh, String serverName) {
+    public IAMSaslClient(String mechanism,
+            CallbackHandler cbh,
+            String serverName,
+            SignedPayloadGenerator payloadGenerator) {
         this.mechanism = mechanism;
         this.cbh = cbh;
         this.serverName = serverName;
+        this.payloadGenerator = payloadGenerator;
         setState(State.SEND_CLIENT_FIRST_MESSAGE);
     }
 
@@ -56,20 +59,26 @@ public class IAMSaslClient implements SaslClient {
             switch (state) {
                 case SEND_CLIENT_FIRST_MESSAGE:
                     if (!isChallengeEmpty(challenge)) {
-                        throw new SaslException("Expects an empty challenge");
+                        throw new SaslException("Expects an empty challenge in state " + state);
                     }
                     AWSCredentialsCallback callback = new AWSCredentialsCallback();
                     cbh.handle(new Callback[]{callback});
                     if (callback.isSuccessful()) {
-                        //TODO: signing etc
-                        AuthenticationRequestParams requestParams = AuthenticationRequestParams.create(serverName, callback.getAwsCredentials());
-                        log.debug(callback.getAwsCredentials().getAWSAccessKeyId());
+                        byte[] response = payloadGenerator.signedPayload(
+                                AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
+                        if (log.isDebugEnabled()) {
+                            //TODO: should we do this ?
+                            log.debug("Authentication Payload: {}", new String(response));
+                        }
+                        setState(State.RECEIVE_SERVER_RESPONSE);
+                        return response;
                     } else {
                         throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
                     }
-                    return new byte[0];
                 case RECEIVE_SERVER_RESPONSE:
-                    //TODO: process and log response
+                    if (!isChallengeEmpty(challenge)) {
+                        throw new SaslException("Expects an empty challenge in state " + state);
+                    }
                     setState(State.COMPLETE);
                     return null;
                 default:
@@ -90,7 +99,7 @@ public class IAMSaslClient implements SaslClient {
 
     @Override
     public boolean isComplete() {
-        return false;
+        return State.COMPLETE.equals(state);
     }
 
     @Override
@@ -116,7 +125,6 @@ public class IAMSaslClient implements SaslClient {
 
     @Override
     public void dispose() throws SaslException {
-
     }
 
     private void setState(State state) {
@@ -141,7 +149,7 @@ public class IAMSaslClient implements SaslClient {
                 CallbackHandler cbh) throws SaslException {
             for (String mechanism : mechanisms) {
                 if (IAMLoginModule.MECHANISM.equals(mechanism)) {
-                    return new IAMSaslClient(mechanism, cbh, serverName);
+                    return new IAMSaslClient(mechanism, cbh, serverName, new AWS4SignedPayloadGenerator());
                 }
             }
             throw new SaslException(

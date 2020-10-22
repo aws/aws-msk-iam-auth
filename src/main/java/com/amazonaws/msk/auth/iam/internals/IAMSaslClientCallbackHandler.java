@@ -40,7 +40,7 @@ public class IAMSaslClientCallbackHandler implements AuthenticateCallbackHandler
         }
     }
 
-    private void handleCallback(AWSCredentialsCallback callback) {
+    protected void handleCallback(AWSCredentialsCallback callback) {
         try {
             callback.setAwsCredentials(DefaultAWSCredentialsProviderChain.getInstance().getCredentials());
         } catch (Exception e) {
