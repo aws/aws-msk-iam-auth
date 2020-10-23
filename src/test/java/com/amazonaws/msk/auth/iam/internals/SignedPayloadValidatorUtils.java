@@ -39,8 +39,6 @@ public class SignedPayloadValidatorUtils {
 
     public static void validatePayload(byte[] payload, AuthenticationRequestParams params)
             throws IOException, ParseException {
-        String payloadString = new String(payload);
-        System.out.println(payloadString);
         ObjectMapper mapper = new ObjectMapper();
         Map<String, String> propertyMap = (Map<String, String>) mapper.readValue(payload, Map.class);
 
@@ -61,7 +59,7 @@ public class SignedPayloadValidatorUtils {
                 propertyMap.get(SignerConstants.X_AMZ_ALGORITHM.toLowerCase()));
         assertTrue(dateFormat.parse(propertyMap.get(SignerConstants.X_AMZ_DATE.toLowerCase())).toInstant().isBefore(Instant.now()));
         //TODO: change later
-        assertTrue(Integer.parseInt(propertyMap.get(SignerConstants.X_AMZ_EXPIRES.toLowerCase())) <= 604800);
+        assertTrue(Integer.parseInt(propertyMap.get(SignerConstants.X_AMZ_EXPIRES.toLowerCase())) <= 900);
 
     }
 }

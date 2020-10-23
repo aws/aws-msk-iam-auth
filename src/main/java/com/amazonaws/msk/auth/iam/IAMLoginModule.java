@@ -1,6 +1,5 @@
 package com.amazonaws.msk.auth.iam;
 
-import com.amazonaws.msk.auth.iam.internals.IAMSaslClient;
 import com.amazonaws.msk.auth.iam.internals.IAMSaslClientProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

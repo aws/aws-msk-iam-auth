@@ -2,6 +2,7 @@ package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.msk.auth.iam.IAMClientCallbackHandler;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.junit.jupiter.api.Test;
 
@@ -13,10 +14,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslException;
+import java.io.IOException;
 import java.util.Collections;
+import java.util.function.Supplier;
 
 public class IAMSaslClientTest {
-
     public static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
     public static final String AWS_MSK_IAM = "AWS_MSK_IAM";
 
@@ -45,6 +47,13 @@ public class IAMSaslClientTest {
     @Test
     public void testFailedCallback() throws SaslException {
         SaslClient saslClient = getFailureIAMClient();
+        assertThrows(SaslException.class, () -> saslClient.evaluateChallenge(new byte[]{}));
+        assertFalse(saslClient.isComplete());
+    }
+
+    @Test
+    public void testThrowingCallback() throws SaslException {
+        SaslClient saslClient = getThrowingIAMClient();
         assertThrows(SaslException.class, () -> saslClient.evaluateChallenge(new byte[]{}));
         assertFalse(saslClient.isComplete());
     }
@@ -95,23 +104,32 @@ public class IAMSaslClientTest {
     }
 
     private SaslClient getSuccessfulIAMClient() throws SaslException {
-        return new IAMSaslClient.IAMSaslClientFactory()
-                .createSaslClient(new String[]{AWS_MSK_IAM}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
-                        Collections.emptyMap(),
-                        new SuccessfulIAMCallbackHandler(new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY")));
-    }
-
-    private static class FailureIAMCallbackHandler extends IAMClientCallbackHandler {
-        @Override
-        protected void handleCallback(AWSCredentialsCallback callback) {
-            callback.setLoadingException(new IllegalArgumentException("TEST Exception"));
-        }
+        return getIAMClient(() -> new SuccessfulIAMCallbackHandler(new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY")));
     }
 
     private SaslClient getFailureIAMClient() throws SaslException {
+        return getIAMClient(() -> new IAMClientCallbackHandler() {
+            @Override
+            protected void handleCallback(AWSCredentialsCallback callback) {
+                callback.setLoadingException(new IllegalArgumentException("TEST Exception"));
+            }
+        });
+    }
+
+    private SaslClient getThrowingIAMClient() throws SaslException {
+        return getIAMClient(() -> new IAMClientCallbackHandler(){
+            @Override
+            protected void handleCallback(AWSCredentialsCallback callback) throws IOException {
+                throw new IOException("TEST IO Exception");
+            }
+        });
+    }
+
+    private SaslClient getIAMClient(Supplier<IAMClientCallbackHandler> handlerSupplier) throws SaslException {
         return new IAMSaslClient.IAMSaslClientFactory()
                 .createSaslClient(new String[]{AWS_MSK_IAM}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
                         Collections.emptyMap(),
-                        new FailureIAMCallbackHandler());
+                        handlerSupplier.get());
     }
+
 }

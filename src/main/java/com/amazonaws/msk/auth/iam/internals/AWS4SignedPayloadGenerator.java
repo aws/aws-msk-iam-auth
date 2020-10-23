@@ -11,22 +11,36 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.sql.Date;
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.TimeUnit;
 
-public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
+class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private static final Logger log = LoggerFactory.getLogger(AWS4SignedPayloadGenerator.class);
 
     private static final String ACTION_KEY = "Action";
     private static final String ACTION_VALUE = "kafka-cluster:Connect";
     private static final String VERSION_KEY = "version";
+    public static final int EXPIRY_DURATION_MINUTES = 15;
 
     @Override
-    public byte [] signedPayload(AuthenticationRequestParams params) throws IOException {
+    public byte[] signedPayload(AuthenticationRequestParams params) throws IOException {
+        Objects.requireNonNull(params);
         final AWS4Signer signer = getConfiguredSigner(params);
+        final DefaultRequest request = createRequestForSigning(params);
+
+        signer.presignRequest(request, params.getAwsCredentials(), getExpiryDate());
+
+        return toPayloadBytes(request, params);
+    }
+
+    private DefaultRequest createRequestForSigning(AuthenticationRequestParams params) {
         final DefaultRequest request = new DefaultRequest(params.getServiceScope());
         request.setHttpMethod(HttpMethodName.GET);
         try {
@@ -35,9 +49,12 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
             throw new IllegalArgumentException("Failed to parse host URI", e);
         }
         request.addParameter(ACTION_KEY, ACTION_VALUE);
-        //TODO: fill this in with a shorter value
-        signer.presignRequest(request, params.getAwsCredentials(), null);
-        return toPayloadBytes(request, params);
+        return request;
+    }
+
+    private java.util.Date getExpiryDate() {
+        return Date.from(Instant.ofEpochMilli(Instant.now().toEpochMilli() + TimeUnit.MINUTES.toMillis(
+                EXPIRY_DURATION_MINUTES)));
     }
 
     private AWS4Signer getConfiguredSigner(AuthenticationRequestParams params) {
@@ -51,7 +68,7 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
         return aws4Signer;
     }
 
-    private byte [] toPayloadBytes(DefaultRequest request, AuthenticationRequestParams params) throws IOException {
+    private byte[] toPayloadBytes(DefaultRequest request, AuthenticationRequestParams params) throws IOException {
         Map<String, String> keyValueMap = toKeyValueMap(request, params);
 
         ObjectMapper mapper = new ObjectMapper();
@@ -62,6 +79,7 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
      * Convert the signed request into the map of key value strings that will be used to create the signed payload.
      * It adds all the query parameters and headers in the request object as entries in the map of key value strings.
      * It also adds the version of the AuthenticationRequestParams into the map of key value strings.
+     *
      * @param request
      * @param params
      * @return
@@ -89,6 +107,7 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
      * If the parameter value is of length 0, return an empty string.
      * If the parameter value is of length 1, return the sole element.
      * if the parameter value is longer than 1, join the list of string into a single string, separate by ";".
+     *
      * @param key
      * @param value
      * @return

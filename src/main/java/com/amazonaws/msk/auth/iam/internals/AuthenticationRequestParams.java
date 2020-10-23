@@ -14,7 +14,7 @@ import java.util.Objects;
  * These are the parameters that will go into this class.
  **/
 
-public class AuthenticationRequestParams {
+class AuthenticationRequestParams {
     private static final String VERSION_1 = "2020_10_22";
     private static final String SERVICE_SCOPE = "kafka-cluster";
 

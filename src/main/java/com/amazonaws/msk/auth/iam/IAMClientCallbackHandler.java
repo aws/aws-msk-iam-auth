@@ -1,7 +1,9 @@
 package com.amazonaws.msk.auth.iam;
 
+import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.msk.auth.iam.internals.AWSCredentialsCallback;
+import org.apache.http.client.CredentialsProvider;
 import org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +17,7 @@ import java.util.Map;
 
 public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
+    private AWSCredentialsProvider provider = DefaultAWSCredentialsProviderChain.getInstance();
 
     @Override
     public void configure(Map<String, ?> configs, String saslMechanism, List<AppConfigurationEntry> jaasConfigEntries) {
@@ -25,7 +28,6 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
 
     @Override
     public void close() {
-
     }
 
     @Override
@@ -39,9 +41,12 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         }
     }
 
-    protected void handleCallback(AWSCredentialsCallback callback) {
+    protected void handleCallback(AWSCredentialsCallback callback) throws IOException {
+        if (log.isDebugEnabled()) {
+            log.debug("Selecting provider {} to load credentials",provider.getClass().getName());
+        }
         try {
-            callback.setAwsCredentials(DefaultAWSCredentialsProviderChain.getInstance().getCredentials());
+            callback.setAwsCredentials(provider.getCredentials());
         } catch (Exception e) {
             callback.setLoadingException(e);
         }
