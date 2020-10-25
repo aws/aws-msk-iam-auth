@@ -8,12 +8,15 @@ import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * Not refreshed.
+ * Expected to be created everytime credentials are loaded.
+ * Works for SASLClient since a new provider is created for a SASLClient.
+ */
 public class MSKCredentialProvider implements AWSCredentialsProvider {
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
     private final Map<String, ?> options;
@@ -42,7 +45,6 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
 
     @Override
     public void refresh() {
-        delegate.refresh();
     }
 
     public class JaasConfigDelegateCredentialProvider implements AWSCredentialsProvider {
@@ -51,9 +53,6 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
 
         public JaasConfigDelegateCredentialProvider(String[] optionKeys,
                 ConfigCredentialProviderSuppler supplier) {
-            if (log.isDebugEnabled()) {
-                log.debug("Optional keys {}", optionKeys);
-            }
             this.optionKeys = optionKeys;
             this.supplier = supplier;
         }
@@ -69,7 +68,6 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
 
         @Override
         public void refresh() {
-
         }
     }
 
