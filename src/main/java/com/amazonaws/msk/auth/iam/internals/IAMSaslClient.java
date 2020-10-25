@@ -15,8 +15,19 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
 
+/**
+ * The IAMSaslClient is used to provide SASL integration with AWS IAM.
+ * The IAMSaslClient has an initial response, so it starts out in the state SEND_CLIENT_FIRST_MESSAGE.
+ * The initial response sent to the server contains an authentication payload.
+ * The authentication payload consists of a json object that includes a signature signed by the client's credentials.
+ * The exact details of the authentication payload can be seen in {@link AWS4SignedPayloadGenerator}.
+ * The credentials used to sign the payload are fetched by invoking the
+ * {@link com.amazonaws.msk.auth.iam.IAMClientCallbackHandler}.
+ * After sending the authentication payload, the client transitions to state RECEIVE_SENDER_RESPONSE.
+ * Once it receives a successful response from the server, the client transitions to the state completed.
+ * A failure at any intermediate step transitions the client to a FAILED state.
+ */
 public class IAMSaslClient implements SaslClient {
-
     private static final Logger log = LoggerFactory.getLogger(IAMSaslClient.class);
 
     enum State {
@@ -66,10 +77,6 @@ public class IAMSaslClient implements SaslClient {
                     if (callback.isSuccessful()) {
                         byte[] response = payloadGenerator.signedPayload(
                                 AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
-                        if (log.isDebugEnabled()) {
-                            //TODO: should we do this ?
-                            log.debug("Authentication Payload: {}", new String(response));
-                        }
                         setState(State.RECEIVE_SERVER_RESPONSE);
                         return response;
                     } else {

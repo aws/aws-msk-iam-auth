@@ -13,6 +13,7 @@ public class ProducerClientTest {
             " username=\"alice\" password=\"alice-secret\";";
 
     public static final String SASL_IAM_JAAS_CONFIG_VALUE = "com.amazonaws.msk.auth.iam.IAMLoginModule required;";
+    //        " awsProfileName=\"dadada\";";
 
     @Test
     @Disabled
