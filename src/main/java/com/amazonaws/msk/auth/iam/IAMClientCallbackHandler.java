@@ -18,17 +18,17 @@ import java.util.Optional;
 
 public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
-    private AWSCredentialsProvider provider = DefaultAWSCredentialsProviderChain.getInstance();
+    private AWSCredentialsProvider provider;
 
     @Override
     public void configure(Map<String, ?> configs, String saslMechanism, List<AppConfigurationEntry> jaasConfigEntries) {
         if (!IAMLoginModule.MECHANISM.equals(saslMechanism)) {
             throw new IllegalArgumentException("Unexpected SASL mechanism: " + saslMechanism);
         }
-        //TODO: change to use class.getName
         Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
-                .filter(j -> "com.amazonaws.msk.auth.iam.IAMLoginModule".equals(j.getLoginModuleName())).findFirst();
-        configEntry.ifPresent(c -> provider = new MSKCredentialProvider(c.getOptions()));
+                .filter(j -> IAMLoginModule.class.getCanonicalName().equals(j.getLoginModuleName())).findFirst();
+        provider = configEntry.map(c -> (AWSCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
+                .orElse(DefaultAWSCredentialsProviderChain.getInstance());
     }
 
     @Override
