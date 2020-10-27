@@ -7,6 +7,8 @@ import javax.security.auth.callback.Callback;
 
 /**
  * This class is used to pass AWSCredentials from the IAMCredentialCallbackHandler to the IAMSaslClient.
+ * If the callbackhandler succeeds, it sets the AWSCredentials. If the callback handler fails to load the credentials,
+ * it sets the loading exception.
  */
 public class AWSCredentialsCallback implements Callback {
     private AWSCredentials awsCredentials = null;

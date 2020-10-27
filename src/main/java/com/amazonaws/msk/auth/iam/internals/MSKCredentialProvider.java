@@ -67,6 +67,10 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
     public void refresh() {
     }
 
+    /**
+     * This AWS Credential Provider first checks if all the provided option keys are present in the provided JaasConfig.
+     * If they are all present it invokes the config credential provider supplier.
+     */
     public class JaasConfigDelegateCredentialProvider implements AWSCredentialsProvider {
         private final String[] optionKeys;
         private final ConfigCredentialProviderSupplier supplier;
@@ -96,6 +100,9 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
         ProfileCredentialsProvider get(String profile);
     }
 
+    /**
+     * This interface provides a AWSCredentialsProvider based on JaasConfig options.
+     */
     @FunctionalInterface
     interface ConfigCredentialProviderSupplier {
         AWSCredentialsProvider getCredentialProvider(Map<String, ?> options);

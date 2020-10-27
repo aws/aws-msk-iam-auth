@@ -21,6 +21,14 @@ import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * This class is used to generate the AWS Sigv4 signed authentication payload sent by the IAMSaslClient to the broker.
+ * It configures a AWSSigner based on the authentication request parameters. It generates a request with the endpoint
+ * set to the kafka broker (kafka:// as prefix), action set to kafka-cluster:Connect and the Http method as GET.
+ * It then pre-signs the request using the credentials in the authentication request parameters and a expiration period
+ * of 15 minutes. Afterwards, the signed request is converted into a key value map with headers and query parameters
+ * acting as keys. Then the key value map is serialized as a JSON object and returned as bytes.
+ */
 class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private static final Logger log = LoggerFactory.getLogger(AWS4SignedPayloadGenerator.class);
 

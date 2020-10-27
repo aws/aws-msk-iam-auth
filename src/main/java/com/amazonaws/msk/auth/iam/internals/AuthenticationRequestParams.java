@@ -10,8 +10,8 @@ import java.util.Objects;
 
 /**
  * This class represents the parameters that will be used to generate the Sigv4 signature
- * as well as the final AuthenticationRequestPayload (except the signature itself) sent to the kafka broker.
- * These are the parameters that will go into this class.
+ * as well as the final Authentication Payload sent to the kafka broker.
+ * The class is versioned so that it can be extended if necessary in the future.
  **/
 
 class AuthenticationRequestParams {

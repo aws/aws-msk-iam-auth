@@ -16,6 +16,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+/**
+ * This client callback handler is used to extract AWSCredentials based on JaasConfig options passed to IAMLoginModule.
+ * If config options are provided the {@link MSKCredentialProvider} is used.
+ * If no config options are provided it uses the DefaultAWSCredentialsProviderChain.
+ */
 public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
     private AWSCredentialsProvider provider;

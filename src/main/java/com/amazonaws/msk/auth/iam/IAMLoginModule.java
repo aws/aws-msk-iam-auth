@@ -11,7 +11,8 @@ import javax.security.auth.spi.LoginModule;
 import java.util.Map;
 
 /**
- *
+ *  This Login Module is used to register the IAM SASL client provider.
+ *  The module is a no-op for other purposes.
  */
 public class IAMLoginModule implements LoginModule {
     private static final Logger log = LoggerFactory.getLogger(IAMLoginModule.class);
