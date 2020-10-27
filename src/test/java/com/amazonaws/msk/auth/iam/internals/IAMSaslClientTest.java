@@ -15,22 +15,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslException;
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.Collections;
 import java.util.function.Supplier;
 
 public class IAMSaslClientTest {
     public static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
     public static final String AWS_MSK_IAM = "AWS_MSK_IAM";
+    public static final BasicAWSCredentials BASIC_AWS_CREDENTIALS = new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY");
 
     @Test
-    public void testCompleteValidExchange() throws SaslException {
+    public void testCompleteValidExchange() throws IOException, ParseException {
         SaslClient saslClient = getSuccessfulIAMClient();
         assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
 
-        //TODO: test validity of response
         byte[] response = saslClient.evaluateChallenge(new byte[]{});
 
+        SignedPayloadValidatorUtils
+                .validatePayload(response, AuthenticationRequestParams.create(VALID_HOSTNAME, BASIC_AWS_CREDENTIALS));
         assertFalse(saslClient.isComplete());
 
         saslClient.evaluateChallenge(new byte[]{});
@@ -64,7 +67,6 @@ public class IAMSaslClientTest {
         assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
 
-        //TODO: test validity of response
         byte[] response = saslClient.evaluateChallenge(new byte[]{});
 
         assertFalse(saslClient.isComplete());
@@ -85,9 +87,9 @@ public class IAMSaslClientTest {
     public void testInvalidMechanism() {
 
         assertThrows(SaslException.class, () -> new IAMSaslClient.IAMSaslClientFactory()
-                .createSaslClient(new String[]{AWS_MSK_IAM+"BAD"}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
+                .createSaslClient(new String[]{AWS_MSK_IAM + "BAD"}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
                         Collections.emptyMap(),
-                        new SuccessfulIAMCallbackHandler(new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY"))));
+                        new SuccessfulIAMCallbackHandler(BASIC_AWS_CREDENTIALS)));
     }
 
     private static class SuccessfulIAMCallbackHandler extends IAMClientCallbackHandler {
@@ -104,7 +106,7 @@ public class IAMSaslClientTest {
     }
 
     private SaslClient getSuccessfulIAMClient() throws SaslException {
-        return getIAMClient(() -> new SuccessfulIAMCallbackHandler(new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY")));
+        return getIAMClient(() -> new SuccessfulIAMCallbackHandler(BASIC_AWS_CREDENTIALS));
     }
 
     private SaslClient getFailureIAMClient() throws SaslException {
@@ -117,7 +119,7 @@ public class IAMSaslClientTest {
     }
 
     private SaslClient getThrowingIAMClient() throws SaslException {
-        return getIAMClient(() -> new IAMClientCallbackHandler(){
+        return getIAMClient(() -> new IAMClientCallbackHandler() {
             @Override
             protected void handleCallback(AWSCredentialsCallback callback) throws IOException {
                 throw new IOException("TEST IO Exception");

@@ -58,7 +58,6 @@ public class SignedPayloadValidatorUtils {
         assertEquals(SignerConstants.AWS4_SIGNING_ALGORITHM,
                 propertyMap.get(SignerConstants.X_AMZ_ALGORITHM.toLowerCase()));
         assertTrue(dateFormat.parse(propertyMap.get(SignerConstants.X_AMZ_DATE.toLowerCase())).toInstant().isBefore(Instant.now()));
-        //TODO: change later
         assertTrue(Integer.parseInt(propertyMap.get(SignerConstants.X_AMZ_EXPIRES.toLowerCase())) <= 900);
 
     }
