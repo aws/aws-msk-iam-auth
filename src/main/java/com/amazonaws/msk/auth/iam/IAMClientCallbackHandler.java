@@ -56,6 +56,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
             log.debug("Selecting provider {} to load credentials", provider.getClass().getName());
         }
         try {
+            provider.refresh();
             callback.setAwsCredentials(provider.getCredentials());
         } catch (Exception e) {
             callback.setLoadingException(e);
