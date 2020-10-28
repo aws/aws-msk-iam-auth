@@ -35,7 +35,7 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private static final String ACTION_KEY = "Action";
     private static final String ACTION_VALUE = "kafka-cluster:Connect";
     private static final String VERSION_KEY = "version";
-    public static final int EXPIRY_DURATION_MINUTES = 15;
+    private static final int EXPIRY_DURATION_MINUTES = 15;
 
     @Override
     public byte[] signedPayload(AuthenticationRequestParams params) throws IOException {
@@ -77,9 +77,9 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     }
 
     private byte[] toPayloadBytes(DefaultRequest request, AuthenticationRequestParams params) throws IOException {
-        Map<String, String> keyValueMap = toKeyValueMap(request, params);
+        final Map<String, String> keyValueMap = toKeyValueMap(request, params);
 
-        ObjectMapper mapper = new ObjectMapper();
+        final ObjectMapper mapper = new ObjectMapper();
         return mapper.writeValueAsBytes(keyValueMap);
     }
 
@@ -96,14 +96,14 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
             AuthenticationRequestParams params) {
         Map<String, String> keyValueMap = new HashMap<>();
 
-        Set<Map.Entry<String, List<String>>> parameterEntries = request.getParameters().entrySet();
+        final Set<Map.Entry<String, List<String>>> parameterEntries = request.getParameters().entrySet();
         parameterEntries.stream().forEach(
                 e -> keyValueMap.put(e.getKey().toLowerCase(), generateParameterValue(e.getKey(), e.getValue())));
 
         keyValueMap.put(VERSION_KEY, params.getVersion());
 
         //Add the headers.
-        Set<Map.Entry<String, String>> headerEntries = request.getHeaders().entrySet();
+        final Set<Map.Entry<String, String>> headerEntries = request.getHeaders().entrySet();
         headerEntries.stream().forEach(e -> keyValueMap.put(e.getKey().toLowerCase(), e.getValue()));
 
         return keyValueMap;
@@ -129,7 +129,7 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
                 throw new IllegalArgumentException(
                         "Unexpected number of arguments " + value.size() + " for query parameter " + key);
             }
-            StringJoiner joiner = new StringJoiner(";");
+            final StringJoiner joiner = new StringJoiner(";");
             value.stream().forEach(joiner::add);
             return joiner.toString();
         }

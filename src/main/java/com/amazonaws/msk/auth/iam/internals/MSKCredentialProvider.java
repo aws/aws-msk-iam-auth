@@ -35,13 +35,18 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
 
     MSKCredentialProvider(Map<String, ?> options,
             Optional<ProfileCredentialsProvider> profileCredentialsProvider) {
-        List delegateList = new ArrayList<>();
-        profileCredentialsProvider.ifPresent(delegateList::add);
-        delegateList.add(DefaultAWSCredentialsProviderChain.getInstance());
+        final List delegateList = getListOfDelegates(profileCredentialsProvider);
         delegate = new AWSCredentialsProviderChain(delegateList);
         if (log.isDebugEnabled()) {
             log.debug("Number of options to configure credential provider {}", options.size());
         }
+    }
+
+    private List getListOfDelegates(Optional<ProfileCredentialsProvider> profileCredentialsProvider) {
+        final List delegateList = new ArrayList<>();
+        profileCredentialsProvider.ifPresent(delegateList::add);
+        delegateList.add(DefaultAWSCredentialsProviderChain.getInstance());
+        return delegateList;
     }
 
     private static Optional<ProfileCredentialsProvider> getProfileProvider(Map<String, ?> options) {

@@ -30,7 +30,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         if (!IAMLoginModule.MECHANISM.equals(saslMechanism)) {
             throw new IllegalArgumentException("Unexpected SASL mechanism: " + saslMechanism);
         }
-        Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
+        final Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
                 .filter(j -> IAMLoginModule.class.getCanonicalName().equals(j.getLoginModuleName())).findFirst();
         provider = configEntry.map(c -> (AWSCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
                 .orElse(DefaultAWSCredentialsProviderChain.getInstance());

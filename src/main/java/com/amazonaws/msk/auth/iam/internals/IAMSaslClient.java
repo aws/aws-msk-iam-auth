@@ -74,11 +74,11 @@ public class IAMSaslClient implements SaslClient {
                         throw new SaslException("Expects an empty challenge in state " + state);
                     }
                     //Invoke the callback handler to fetch the credentials.
-                    AWSCredentialsCallback callback = new AWSCredentialsCallback();
+                    final AWSCredentialsCallback callback = new AWSCredentialsCallback();
                     cbh.handle(new Callback[]{callback});
                     if (callback.isSuccessful()) {
                         //Generate the signed payload
-                        byte[] response = payloadGenerator.signedPayload(
+                        final byte[] response = payloadGenerator.signedPayload(
                                 AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
                         //transition to the state waiting to receive server response.
                         setState(State.RECEIVE_SERVER_RESPONSE);
