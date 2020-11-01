@@ -29,7 +29,9 @@ dependencies {
 }
 
 test {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'incomplete'
+    }
 }
 
 

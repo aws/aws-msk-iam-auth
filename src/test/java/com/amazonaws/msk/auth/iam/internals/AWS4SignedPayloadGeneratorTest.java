@@ -4,16 +4,18 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.BasicAWSCredentials;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.IOException;
 import java.text.ParseException;
 
 public class AWS4SignedPayloadGeneratorTest {
-    public static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
-    private AWSCredentials credentials;
+    private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
     private static final String ACCESS_KEY = "ACCESS_KEY";
     private static final String SECRET_KEY = "SECRET_KEY";
+
+    private AWSCredentials credentials;
 
     @BeforeEach
     public void setup() {
@@ -29,6 +31,4 @@ public class AWS4SignedPayloadGeneratorTest {
         assertNotNull(signedPayload);
         SignedPayloadValidatorUtils.validatePayload(signedPayload, params);
     }
-
-
 }

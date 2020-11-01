@@ -1,25 +1,17 @@
 package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.auth.profile.ProfilesConfigFile;
-import com.amazonaws.msk.auth.iam.IAMClientCallbackHandler;
 import org.junit.jupiter.api.Test;
 
-import javax.security.auth.callback.Callback;
-import javax.security.auth.callback.UnsupportedCallbackException;
-
 import java.io.File;
-import java.io.IOException;
-import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class MSKCredentialProviderTest {
     private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
@@ -68,7 +60,7 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsProfileName", "test_profile");
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap,
-                (p) -> new ProfileCredentialsProvider(profilesConfig, p));
+                 Optional.of(new ProfileCredentialsProvider(profilesConfig, "test_profile")));
 
         AWSCredentials credentials = provider.getCredentials();
         assertEquals("PROFILE_ACCESS_KEY", credentials.getAWSAccessKeyId());

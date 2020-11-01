@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class SignedPayloadValidatorUtils {
+public final class SignedPayloadValidatorUtils {
     private static final String VERSION = "version";
     private static final String HOST = "host";
     private static final String[] requiredKeys = {VERSION,
@@ -36,6 +36,9 @@ public class SignedPayloadValidatorUtils {
             ACTION,
     };
     private static final SimpleDateFormat dateFormat= new SimpleDateFormat("YYYYMMDD\'T\'HHMMSS\'Z\'");
+
+    private SignedPayloadValidatorUtils() {
+    }
 
     public static void validatePayload(byte[] payload, AuthenticationRequestParams params)
             throws IOException, ParseException {

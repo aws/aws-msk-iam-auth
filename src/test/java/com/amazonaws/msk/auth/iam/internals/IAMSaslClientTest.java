@@ -20,9 +20,9 @@ import java.util.Collections;
 import java.util.function.Supplier;
 
 public class IAMSaslClientTest {
-    public static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
-    public static final String AWS_MSK_IAM = "AWS_MSK_IAM";
-    public static final BasicAWSCredentials BASIC_AWS_CREDENTIALS = new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY");
+    private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
+    private static final String AWS_MSK_IAM = "AWS_MSK_IAM";
+    private static final BasicAWSCredentials BASIC_AWS_CREDENTIALS = new BasicAWSCredentials("ACCESS_KEY", "SECRET_KEY");
 
     @Test
     public void testCompleteValidExchange() throws IOException, ParseException {

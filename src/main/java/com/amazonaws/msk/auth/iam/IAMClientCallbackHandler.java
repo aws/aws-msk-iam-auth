@@ -17,7 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * This client callback handler is used to extract AWSCredentials based on JaasConfig options passed to IAMLoginModule.
+ * This client callback handler is used to extract AWSCredentials.
+ * The credentials are based on JaasConfig options passed to {@link IAMLoginModule}.
  * If config options are provided the {@link MSKCredentialProvider} is used.
  * If no config options are provided it uses the DefaultAWSCredentialsProviderChain.
  */
@@ -30,7 +31,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         if (!IAMLoginModule.MECHANISM.equals(saslMechanism)) {
             throw new IllegalArgumentException("Unexpected SASL mechanism: " + saslMechanism);
         }
-        Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
+        final Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
                 .filter(j -> IAMLoginModule.class.getCanonicalName().equals(j.getLoginModuleName())).findFirst();
         provider = configEntry.map(c -> (AWSCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
                 .orElse(DefaultAWSCredentialsProviderChain.getInstance());
@@ -56,6 +57,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
             log.debug("Selecting provider {} to load credentials", provider.getClass().getName());
         }
         try {
+            provider.refresh();
             callback.setAwsCredentials(provider.getCredentials());
         } catch (Exception e) {
             callback.setLoadingException(e);

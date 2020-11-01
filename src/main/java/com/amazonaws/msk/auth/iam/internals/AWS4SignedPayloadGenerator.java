@@ -35,17 +35,21 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private static final String ACTION_KEY = "Action";
     private static final String ACTION_VALUE = "kafka-cluster:Connect";
     private static final String VERSION_KEY = "version";
-    public static final int EXPIRY_DURATION_MINUTES = 15;
+    private static final int EXPIRY_DURATION_MINUTES = 15;
 
     @Override
-    public byte[] signedPayload(AuthenticationRequestParams params) throws IOException {
+    public byte[] signedPayload(AuthenticationRequestParams params) throws PayloadGenerationException {
         Objects.requireNonNull(params);
         final AWS4Signer signer = getConfiguredSigner(params);
         final DefaultRequest request = createRequestForSigning(params);
 
         signer.presignRequest(request, params.getAwsCredentials(), getExpiryDate());
 
-        return toPayloadBytes(request, params);
+        try {
+            return toPayloadBytes(request, params);
+        } catch (IOException e) {
+            throw new PayloadGenerationException("Failure to create authentication payload ", e);
+        }
     }
 
     private DefaultRequest createRequestForSigning(AuthenticationRequestParams params) {
@@ -77,9 +81,9 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     }
 
     private byte[] toPayloadBytes(DefaultRequest request, AuthenticationRequestParams params) throws IOException {
-        Map<String, String> keyValueMap = toKeyValueMap(request, params);
+        final Map<String, String> keyValueMap = toKeyValueMap(request, params);
 
-        ObjectMapper mapper = new ObjectMapper();
+        final ObjectMapper mapper = new ObjectMapper();
         return mapper.writeValueAsBytes(keyValueMap);
     }
 
@@ -88,22 +92,22 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
      * It adds all the query parameters and headers in the request object as entries in the map of key value strings.
      * It also adds the version of the AuthenticationRequestParams into the map of key value strings.
      *
-     * @param request
-     * @param params
-     * @return
+     * @param request The signed request that contains the information to be converted into a key value map.
+     * @param params  The authentication request parameters used to generate the signed request.
+     * @return A key value map containing the query parameters and headers from the signed request.
      */
     private Map<String, String> toKeyValueMap(DefaultRequest request,
             AuthenticationRequestParams params) {
-        Map<String, String> keyValueMap = new HashMap<>();
+        final Map<String, String> keyValueMap = new HashMap<>();
 
-        Set<Map.Entry<String, List<String>>> parameterEntries = request.getParameters().entrySet();
+        final Set<Map.Entry<String, List<String>>> parameterEntries = request.getParameters().entrySet();
         parameterEntries.stream().forEach(
                 e -> keyValueMap.put(e.getKey().toLowerCase(), generateParameterValue(e.getKey(), e.getValue())));
 
         keyValueMap.put(VERSION_KEY, params.getVersion());
 
         //Add the headers.
-        Set<Map.Entry<String, String>> headerEntries = request.getHeaders().entrySet();
+        final Set<Map.Entry<String, String>> headerEntries = request.getHeaders().entrySet();
         headerEntries.stream().forEach(e -> keyValueMap.put(e.getKey().toLowerCase(), e.getValue()));
 
         return keyValueMap;
@@ -116,9 +120,9 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
      * If the parameter value is of length 1, return the sole element.
      * if the parameter value is longer than 1, join the list of string into a single string, separate by ";".
      *
-     * @param key
-     * @param value
-     * @return
+     * @param key   The name of the query parameter.
+     * @param value The list of strings that is the value of the query parameter.
+     * @return A single joined string.
      */
     private String generateParameterValue(String key, List<String> value) {
         if (value.isEmpty()) {
@@ -129,7 +133,7 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
                 throw new IllegalArgumentException(
                         "Unexpected number of arguments " + value.size() + " for query parameter " + key);
             }
-            StringJoiner joiner = new StringJoiner(";");
+            final StringJoiner joiner = new StringJoiner(";");
             value.stream().forEach(joiner::add);
             return joiner.toString();
         }

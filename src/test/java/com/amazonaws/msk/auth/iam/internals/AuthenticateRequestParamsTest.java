@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class AuthenticateRequestParamsTest {
-    public static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
-    public static final String HOSTNAME_NO_REGIOM = "abcd.efgh.com";
+    private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
+    private static final String HOSTNAME_NO_REGIOM = "abcd.efgh.com";
     private AWSCredentials credentials;
     private static final String ACCESS_KEY = "ACCESS_KEY";
     private static final String SECRET_KEY = "SECRET_KEY";

@@ -58,7 +58,7 @@ class AuthenticationRequestParams {
     public static AuthenticationRequestParams create(String host, AWSCredentials credentials)
             throws IllegalArgumentException {
         Objects.nonNull(host);
-        Region region = regionMetadata.tryGetRegionByEndpointDnsSuffix(host);
+        final Region region = regionMetadata.tryGetRegionByEndpointDnsSuffix(host);
         if (region == null) {
             throw new IllegalArgumentException("Host " + host + " does not belong to a valid region.");
         }
