@@ -17,7 +17,7 @@ import java.util.Map;
 
 /**
  * The IAMSaslClient is used to provide SASL integration with AWS IAM.
- * The IAMSaslClient has an initial response, so it starts out in the state SEND_CLIENT_FIRST_MESSAGE.
+ * It has an initial response, so it starts out in the state SEND_CLIENT_FIRST_MESSAGE.
  * The initial response sent to the server contains an authentication payload.
  * The authentication payload consists of a json object that includes a signature signed by the client's credentials.
  * The exact details of the authentication payload can be seen in {@link AWS4SignedPayloadGenerator}.
@@ -133,6 +133,9 @@ public class IAMSaslClient implements SaslClient {
 
     @Override
     public Object getNegotiatedProperty(String propName) {
+        if (!isComplete()) {
+            throw new IllegalStateException("Authentication exchange has not completed");
+        }
         return null;
     }
 

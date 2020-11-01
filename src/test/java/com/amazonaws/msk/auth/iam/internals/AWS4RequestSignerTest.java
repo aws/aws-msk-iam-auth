@@ -6,8 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 
 public class AWS4RequestSignerTest {
-
-    public static final String VALID_HOSTNAME = "b-3.statatat-test.bhowhu.kafka.us-west-2.amazonaws.com";
+    private static final String VALID_HOSTNAME = "b-3.statatat-test.bhowhu.kafka.us-west-2.amazonaws.com";
 
     @Test
     public void demoTest() throws IOException {
