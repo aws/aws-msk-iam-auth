@@ -1,6 +1,7 @@
 package com.amazonaws.msk.auth.iam;
 
 import com.amazonaws.msk.auth.iam.internals.AWSCredentialsCallback;
+import com.amazonaws.msk.auth.iam.internals.SystemPropertyCredentialsUtils;
 import org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
 import org.junit.jupiter.api.Test;
 
@@ -14,41 +15,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class IAMClientCallbackHandlerTest {
-    private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
-    private static final String SECRET_KEY_PROPERTY = "aws.secretKey";
     private static final String ACCESS_KEY_VALUE = "ACCESS_KEY_VALUE";
     private static final String SECRET_KEY_VALUE = "SECRET_KEY_VALUE";
 
     @Test
     public void testDefaultCredentials() throws IOException, UnsupportedCallbackException {
-        String initialAccessKey = System.getProperty(ACCESS_KEY_PROPERTY);
-        String initialSecretKey = System.getProperty(SECRET_KEY_PROPERTY);
-
-        try {
-            //Setup test system properties
-            System.setProperty(ACCESS_KEY_PROPERTY, ACCESS_KEY_VALUE);
-            System.setProperty(SECRET_KEY_PROPERTY, SECRET_KEY_VALUE);
-
-            IAMClientCallbackHandler clientCallbackHandler = new IAMClientCallbackHandler();
-            clientCallbackHandler.configure(Collections.emptyMap(), "AWS_MSK_IAM", Collections.emptyList());
-
+        IAMClientCallbackHandler clientCallbackHandler = new IAMClientCallbackHandler();
+        clientCallbackHandler.configure(Collections.emptyMap(), "AWS_MSK_IAM", Collections.emptyList());
+        SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
             AWSCredentialsCallback callback = new AWSCredentialsCallback();
-            clientCallbackHandler.handle(new Callback[]{callback});
+            try {
+                clientCallbackHandler.handle(new Callback[]{callback});
+            } catch (Exception e) {
+                throw new RuntimeException("Test failed", e);
+            }
 
             assertTrue(callback.isSuccessful());
             assertEquals(ACCESS_KEY_VALUE, callback.getAwsCredentials().getAWSAccessKeyId());
             assertEquals(SECRET_KEY_VALUE, callback.getAwsCredentials().getAWSSecretKey());
-
-        } finally {
-            if (initialAccessKey != null) {
-                System.setProperty(ACCESS_KEY_PROPERTY, initialAccessKey);
-            }
-            if (initialSecretKey != null) {
-                System.setProperty(SECRET_KEY_PROPERTY, initialSecretKey);
-            }
-        }
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
-
 
     @Test
     public void testDifferentMechanism() {

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class SignedPayloadValidatorUtils {
@@ -35,7 +36,7 @@ public final class SignedPayloadValidatorUtils {
             "x-amz-security-token",
             ACTION,
     };
-    private static final SimpleDateFormat dateFormat= new SimpleDateFormat("YYYYMMDD\'T\'HHMMSS\'Z\'");
+    private static final SimpleDateFormat dateFormat = new SimpleDateFormat("YYYYMMDD\'T\'HHMMSS\'Z\'");
 
     private SignedPayloadValidatorUtils() {
     }
@@ -60,8 +61,14 @@ public final class SignedPayloadValidatorUtils {
         assertEquals("host", propertyMap.get(SignerConstants.X_AMZ_SIGNED_HEADER.toLowerCase()));
         assertEquals(SignerConstants.AWS4_SIGNING_ALGORITHM,
                 propertyMap.get(SignerConstants.X_AMZ_ALGORITHM.toLowerCase()));
-        assertTrue(dateFormat.parse(propertyMap.get(SignerConstants.X_AMZ_DATE.toLowerCase())).toInstant().isBefore(Instant.now()));
+        assertTrue(dateFormat.parse(propertyMap.get(SignerConstants.X_AMZ_DATE.toLowerCase())).toInstant()
+                .isBefore(Instant.now()));
         assertTrue(Integer.parseInt(propertyMap.get(SignerConstants.X_AMZ_EXPIRES.toLowerCase())) <= 900);
+        String credential = propertyMap.get(SignerConstants.X_AMZ_CREDENTIAL.toLowerCase());
+        assertNotNull(credential);
+        String[] credentialArray = credential.split("/");
+        assertEquals(5, credentialArray.length);
+        assertEquals(params.getAwsCredentials().getAWSAccessKeyId(), credentialArray[0]);
 
     }
 }

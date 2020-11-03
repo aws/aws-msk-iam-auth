@@ -11,11 +11,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.amazonaws.msk.auth.iam.internals.SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MSKCredentialProviderTest {
-    private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
-    private static final String SECRET_KEY_PROPERTY = "aws.secretKey";
     private static final String ACCESS_KEY_VALUE = "ACCESS_KEY_VALUE";
     private static final String SECRET_KEY_VALUE = "SECRET_KEY_VALUE";
 
@@ -33,7 +32,7 @@ public class MSKCredentialProviderTest {
 
             assertEquals(ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
             assertEquals(SECRET_KEY_VALUE, credentials.getAWSSecretKey());
-        });
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
     /**
@@ -51,7 +50,7 @@ public class MSKCredentialProviderTest {
 
             assertEquals(ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
             assertEquals(SECRET_KEY_VALUE, credentials.getAWSSecretKey());
-        });
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
     @Test
@@ -72,23 +71,4 @@ public class MSKCredentialProviderTest {
         return new ProfilesConfigFile(file);
     }
 
-    private void runTestWithSystemPropertyCredentials(Runnable test) {
-        String initialAccessKey = System.getProperty(ACCESS_KEY_PROPERTY);
-        String initialSecretKey = System.getProperty(SECRET_KEY_PROPERTY);
-
-        try {
-            //Setup test system properties
-            System.setProperty(ACCESS_KEY_PROPERTY, ACCESS_KEY_VALUE);
-            System.setProperty(SECRET_KEY_PROPERTY, SECRET_KEY_VALUE);
-
-            test.run();
-        } finally {
-            if (initialAccessKey != null) {
-                System.setProperty(ACCESS_KEY_PROPERTY, initialAccessKey);
-            }
-            if (initialSecretKey != null) {
-                System.setProperty(SECRET_KEY_PROPERTY, initialSecretKey);
-            }
-        }
-    }
 }
