@@ -1,6 +1,5 @@
 package com.amazonaws.msk.auth.iam.internals;
 
-
 import com.amazonaws.auth.AWSCredentials;
 import lombok.Getter;
 import lombok.NonNull;

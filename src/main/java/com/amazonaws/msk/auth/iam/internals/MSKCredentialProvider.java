@@ -59,7 +59,6 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
         });
     }
 
-
     @Override
     public AWSCredentials getCredentials() {
         return delegate.getCredentials();

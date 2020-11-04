@@ -69,34 +69,34 @@ public class IAMSaslClient implements SaslClient {
         }
         try {
             switch (state) {
-                case SEND_CLIENT_FIRST_MESSAGE:
-                    //For the initial response, the challenge should be empty.
-                    if (!isChallengeEmpty(challenge)) {
-                        throw new SaslException("Expects an empty challenge in state " + state);
-                    }
-                    //Invoke the callback handler to fetch the credentials.
-                    final AWSCredentialsCallback callback = new AWSCredentialsCallback();
-                    cbh.handle(new Callback[]{callback});
-                    if (callback.isSuccessful()) {
-                        //Generate the signed payload
-                        final byte[] response = payloadGenerator.signedPayload(
-                                AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
-                        //transition to the state waiting to receive server response.
-                        setState(State.RECEIVE_SERVER_RESPONSE);
-                        return response;
-                    } else {
-                        throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
-                    }
-                case RECEIVE_SERVER_RESPONSE:
-                    //we expect the successful server response to be empty.
-                    if (!isChallengeEmpty(challenge)) {
-                        throw new SaslException("Expects an empty challenge in state " + state);
-                    }
-                    //At this point, the authentication is complete.
-                    setState(State.COMPLETE);
-                    return null;
-                default:
-                    throw new IllegalSaslStateException("Challenge received in unexpected state " + state);
+            case SEND_CLIENT_FIRST_MESSAGE:
+                //For the initial response, the challenge should be empty.
+                if (!isChallengeEmpty(challenge)) {
+                    throw new SaslException("Expects an empty challenge in state " + state);
+                }
+                //Invoke the callback handler to fetch the credentials.
+                final AWSCredentialsCallback callback = new AWSCredentialsCallback();
+                cbh.handle(new Callback[] { callback });
+                if (callback.isSuccessful()) {
+                    //Generate the signed payload
+                    final byte[] response = payloadGenerator.signedPayload(
+                            AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
+                    //transition to the state waiting to receive server response.
+                    setState(State.RECEIVE_SERVER_RESPONSE);
+                    return response;
+                } else {
+                    throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
+                }
+            case RECEIVE_SERVER_RESPONSE:
+                //we expect the successful server response to be empty.
+                if (!isChallengeEmpty(challenge)) {
+                    throw new SaslException("Expects an empty challenge in state " + state);
+                }
+                //At this point, the authentication is complete.
+                setState(State.COMPLETE);
+                return null;
+            default:
+                throw new IllegalSaslStateException("Challenge received in unexpected state " + state);
             }
         } catch (SaslException se) {
             setState(State.FAILED);
@@ -178,7 +178,7 @@ public class IAMSaslClient implements SaslClient {
 
         @Override
         public String[] getMechanismNames(Map<String, ?> props) {
-            return new String[]{IAMLoginModule.MECHANISM};
+            return new String[] { IAMLoginModule.MECHANISM };
         }
     }
 

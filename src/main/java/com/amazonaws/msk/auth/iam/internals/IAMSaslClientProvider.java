@@ -12,7 +12,7 @@ public class IAMSaslClientProvider extends Provider {
      */
     protected IAMSaslClientProvider() {
         super("SASL/IAM Client Provider", 1.0, "SASL/IAM Client Provider for Kafka");
-        put("SaslClientFactory."+ IAMLoginModule.MECHANISM, IAMSaslClient.IAMSaslClientFactory.class.getName());
+        put("SaslClientFactory." + IAMLoginModule.MECHANISM, IAMSaslClient.IAMSaslClientFactory.class.getName());
     }
 
     public static void initialize() {

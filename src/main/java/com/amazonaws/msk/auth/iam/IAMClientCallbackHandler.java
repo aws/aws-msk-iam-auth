@@ -28,7 +28,9 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private AWSCredentialsProvider provider;
 
     @Override
-    public void configure(Map<String, ?> configs,@NonNull String saslMechanism, @NonNull List<AppConfigurationEntry> jaasConfigEntries) {
+    public void configure(Map<String, ?> configs,
+            @NonNull String saslMechanism,
+            @NonNull List<AppConfigurationEntry> jaasConfigEntries) {
         if (!IAMLoginModule.MECHANISM.equals(saslMechanism)) {
             throw new IllegalArgumentException("Unexpected SASL mechanism: " + saslMechanism);
         }
