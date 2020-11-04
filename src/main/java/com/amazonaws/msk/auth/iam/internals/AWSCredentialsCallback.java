@@ -2,6 +2,7 @@ package com.amazonaws.msk.auth.iam.internals;
 
 
 import com.amazonaws.auth.AWSCredentials;
+import lombok.Getter;
 
 import javax.security.auth.callback.Callback;
 
@@ -12,20 +13,14 @@ import javax.security.auth.callback.Callback;
  * it sets the loading exception.
  */
 public class AWSCredentialsCallback implements Callback {
+    @Getter
     private AWSCredentials awsCredentials = null;
+    @Getter
     private Exception loadingException = null;
-
-    public AWSCredentials getAwsCredentials() {
-        return awsCredentials;
-    }
 
     public void setAwsCredentials(AWSCredentials awsCredentials) {
         this.awsCredentials = awsCredentials;
         this.loadingException = null;
-    }
-
-    public Exception getLoadingException() {
-        return loadingException;
     }
 
     public void setLoadingException(Exception loadingException) {

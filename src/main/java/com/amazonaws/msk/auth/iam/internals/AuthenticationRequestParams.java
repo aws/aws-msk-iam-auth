@@ -4,6 +4,11 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionMetadata;
 import com.amazonaws.regions.RegionMetadataFactory;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Value;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -14,45 +19,25 @@ import java.util.Objects;
  * The class is versioned so that it can be extended if necessary in the future.
  **/
 
+@Getter
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 class AuthenticationRequestParams {
     private static final String VERSION_1 = "2020_10_22";
     private static final String SERVICE_SCOPE = "kafka-cluster";
 
     private static RegionMetadata regionMetadata = RegionMetadataFactory.create();
 
+    @NonNull
     private final String version;
+    @NonNull
     private final String host;
+    @NonNull
     private final AWSCredentials awsCredentials;
+    @NonNull
     private final Region region;
-
-    AuthenticationRequestParams(String version,
-            String host,
-            AWSCredentials awsCredentials,
-            Region region) {
-        this.version = Objects.requireNonNull(version);
-        this.host = Objects.requireNonNull(host);
-        this.awsCredentials = Objects.requireNonNull(awsCredentials);
-        this.region = Objects.requireNonNull(region);
-    }
 
     public String getServiceScope() {
         return SERVICE_SCOPE;
-    }
-
-    public Region getRegion() {
-        return region;
-    }
-
-    public String getHost() {
-        return host;
-    }
-
-    public AWSCredentials getAwsCredentials() {
-        return awsCredentials;
-    }
-
-    public String getVersion() {
-        return version;
     }
 
     public static AuthenticationRequestParams create(String host, AWSCredentials credentials)
