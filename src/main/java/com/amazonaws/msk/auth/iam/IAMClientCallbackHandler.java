@@ -4,6 +4,7 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.msk.auth.iam.internals.AWSCredentialsCallback;
 import com.amazonaws.msk.auth.iam.internals.MSKCredentialProvider;
+import lombok.NonNull;
 import org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +28,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private AWSCredentialsProvider provider;
 
     @Override
-    public void configure(Map<String, ?> configs, String saslMechanism, List<AppConfigurationEntry> jaasConfigEntries) {
+    public void configure(Map<String, ?> configs,@NonNull String saslMechanism, @NonNull List<AppConfigurationEntry> jaasConfigEntries) {
         if (!IAMLoginModule.MECHANISM.equals(saslMechanism)) {
             throw new IllegalArgumentException("Unexpected SASL mechanism: " + saslMechanism);
         }
@@ -42,7 +43,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     }
 
     @Override
-    public void handle(Callback[] callbacks) throws IOException, UnsupportedCallbackException {
+    public void handle(@NonNull Callback[] callbacks) throws IOException, UnsupportedCallbackException {
         for (Callback callback : callbacks) {
             if (callback instanceof AWSCredentialsCallback) {
                 handleCallback((AWSCredentialsCallback) callback);

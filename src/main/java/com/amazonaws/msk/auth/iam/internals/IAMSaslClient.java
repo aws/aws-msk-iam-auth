@@ -1,6 +1,7 @@
 package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.msk.auth.iam.IAMLoginModule;
+import lombok.NonNull;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,10 +41,10 @@ public class IAMSaslClient implements SaslClient {
     private final SignedPayloadGenerator payloadGenerator;
     private State state;
 
-    public IAMSaslClient(String mechanism,
-            CallbackHandler cbh,
-            String serverName,
-            SignedPayloadGenerator payloadGenerator) {
+    public IAMSaslClient(@NonNull String mechanism,
+            @NonNull CallbackHandler cbh,
+            @NonNull String serverName,
+            @NonNull SignedPayloadGenerator payloadGenerator) {
         this.mechanism = mechanism;
         this.cbh = cbh;
         this.serverName = serverName;
