@@ -17,7 +17,9 @@ package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.msk.auth.iam.IAMClientCallbackHandler;
-import org.apache.kafka.clients.producer.Producer;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.junit.jupiter.api.Test;
 
@@ -41,16 +43,17 @@ public class IAMSaslClientTest {
     private static final String SECRET_KEY_VALUE = "SECRET_KEY_VALUE";
     private static final String ACCESS_KEY_VALUE_TWO = "ACCESS_KEY_VALUE_TWO";
     private static final String SECRET_KEY_VALUE_TWO = "SECRET_KEY_VALUE_TWO";
+    private static final String RESPONSE_VERSION = "2020_10_22";
 
     private static final BasicAWSCredentials BASIC_AWS_CREDENTIALS = new BasicAWSCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
 
     @Test
     public void testCompleteValidExchange() throws IOException, ParseException {
-        SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
+        IAMSaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
         runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
-    private void runValidExchangeForSaslClient(SaslClient saslClient, String accessKey, String secretKey) {
+    private void runValidExchangeForSaslClient(IAMSaslClient saslClient, String accessKey, String secretKey) {
         assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
@@ -63,12 +66,19 @@ public class IAMSaslClientTest {
                                         .create(VALID_HOSTNAME, new BasicAWSCredentials(accessKey, secretKey)));
                 assertFalse(saslClient.isComplete());
 
-                saslClient.evaluateChallenge(new byte[]{});
+                String requestId = RandomStringUtils.randomAlphabetic(10);
+                saslClient.evaluateChallenge(getServerResponse(RESPONSE_VERSION, requestId));
                 assertTrue(saslClient.isComplete());
+                assertEquals(requestId, saslClient.getResponseRequestId());
             } catch (Exception e) {
                 throw new RuntimeException("Test failed", e);
             }
         }, accessKey, secretKey);
+    }
+
+    private byte [] getServerResponse(String version, String requestId) throws JsonProcessingException {
+        AuthenticationResponse response = new AuthenticationResponse(version, requestId);
+        return new ObjectMapper().writeValueAsBytes(response);
     }
 
     @Test
@@ -76,11 +86,11 @@ public class IAMSaslClientTest {
         IAMClientCallbackHandler cbh = getIamClientCallbackHandler();
 
         //test the first Sasl client with 1 set of credentials.
-        SaslClient saslClient1 = getSuccessfulIAMClient(cbh);
+        IAMSaslClient saslClient1 = getSuccessfulIAMClient(cbh);
         runValidExchangeForSaslClient(saslClient1, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
 
         //test second sasl client with another set of credentials
-        SaslClient saslClient2 = getSuccessfulIAMClient(cbh);
+        IAMSaslClient saslClient2 = getSuccessfulIAMClient(cbh);
         runValidExchangeForSaslClient(saslClient2, ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO);
     }
 
@@ -114,7 +124,7 @@ public class IAMSaslClientTest {
     }
 
     @Test
-    public void testNonEmptyServerResponse() throws SaslException {
+    public void testInvalidServerResponse() throws SaslException {
         SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
         assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
@@ -130,6 +140,51 @@ public class IAMSaslClientTest {
             assertFalse(saslClient.isComplete());
 
             assertThrows(IllegalSaslStateException.class, () -> saslClient.evaluateChallenge(new byte[]{}));
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
+
+    @Test
+    public void testInvalidResponseVersion() throws SaslException {
+        SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
+        SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
+            try {
+                byte[] response = saslClient.evaluateChallenge(new byte[]{});
+            } catch (SaslException e) {
+                throw new RuntimeException("Test failed", e);
+            }
+            assertFalse(saslClient.isComplete());
+
+            assertThrows(SaslException.class, () -> saslClient.evaluateChallenge(getResponseWithInvalidVersion()));
+            assertFalse(saslClient.isComplete());
+
+            assertThrows(IllegalSaslStateException.class, () -> saslClient.evaluateChallenge(new byte[]{}));
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
+
+    private byte[] getResponseWithInvalidVersion() {
+        AuthenticationResponse response = new AuthenticationResponse(RESPONSE_VERSION, "TEST_REQUEST_ID");
+        try {
+            return new ObjectMapper().writeValueAsString(response).replaceAll(RESPONSE_VERSION,"INVALID_VERSION").getBytes();
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Test failed", e);
+        }
+    }
+
+    @Test
+    public void testEmptyServerResponse() throws SaslException {
+        SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
+        assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
+        assertTrue(saslClient.hasInitialResponse());
+        SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
+            try {
+                byte[] response = saslClient.evaluateChallenge(new byte[]{});
+            } catch (SaslException e) {
+                throw new RuntimeException("Test failed", e);
+            }
+            assertFalse(saslClient.isComplete());
+
+            assertThrows(SaslException.class, () -> saslClient.evaluateChallenge(new byte[]{}));
+            assertFalse(saslClient.isComplete());
         }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
@@ -161,7 +216,7 @@ public class IAMSaslClientTest {
         }
     }
 
-    private SaslClient getSuccessfulIAMClient(IAMClientCallbackHandler cbh) throws SaslException {
+    private IAMSaslClient getSuccessfulIAMClient(IAMClientCallbackHandler cbh) throws SaslException {
         return getIAMClient(() -> cbh);
     }
 
@@ -183,8 +238,8 @@ public class IAMSaslClientTest {
         });
     }
 
-    private SaslClient getIAMClient(Supplier<IAMClientCallbackHandler> handlerSupplier) throws SaslException {
-        return new IAMSaslClient.IAMSaslClientFactory()
+    private IAMSaslClient getIAMClient(Supplier<IAMClientCallbackHandler> handlerSupplier) throws SaslException {
+        return (IAMSaslClient )new IAMSaslClient.IAMSaslClientFactory()
                 .createSaslClient(new String[]{AWS_MSK_IAM}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
                         Collections.emptyMap(),
                         handlerSupplier.get());
