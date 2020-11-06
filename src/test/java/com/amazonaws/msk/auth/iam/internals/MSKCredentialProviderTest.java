@@ -1,3 +1,18 @@
+/*
+  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License").
+  You may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
 package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.auth.AWSCredentials;
@@ -11,11 +26,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.amazonaws.msk.auth.iam.internals.SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class MSKCredentialProviderTest {
-    private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
-    private static final String SECRET_KEY_PROPERTY = "aws.secretKey";
     private static final String ACCESS_KEY_VALUE = "ACCESS_KEY_VALUE";
     private static final String SECRET_KEY_VALUE = "SECRET_KEY_VALUE";
 
@@ -33,7 +47,7 @@ public class MSKCredentialProviderTest {
 
             assertEquals(ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
             assertEquals(SECRET_KEY_VALUE, credentials.getAWSSecretKey());
-        });
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
     /**
@@ -51,7 +65,7 @@ public class MSKCredentialProviderTest {
 
             assertEquals(ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
             assertEquals(SECRET_KEY_VALUE, credentials.getAWSSecretKey());
-        });
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
     @Test
@@ -72,23 +86,4 @@ public class MSKCredentialProviderTest {
         return new ProfilesConfigFile(file);
     }
 
-    private void runTestWithSystemPropertyCredentials(Runnable test) {
-        String initialAccessKey = System.getProperty(ACCESS_KEY_PROPERTY);
-        String initialSecretKey = System.getProperty(SECRET_KEY_PROPERTY);
-
-        try {
-            //Setup test system properties
-            System.setProperty(ACCESS_KEY_PROPERTY, ACCESS_KEY_VALUE);
-            System.setProperty(SECRET_KEY_PROPERTY, SECRET_KEY_VALUE);
-
-            test.run();
-        } finally {
-            if (initialAccessKey != null) {
-                System.setProperty(ACCESS_KEY_PROPERTY, initialAccessKey);
-            }
-            if (initialSecretKey != null) {
-                System.setProperty(SECRET_KEY_PROPERTY, initialSecretKey);
-            }
-        }
-    }
 }

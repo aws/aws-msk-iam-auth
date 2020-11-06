@@ -1,5 +1,7 @@
 plugins {
     id 'java-library'
+    id "io.freefair.lombok" version "5.3.0"
+    id 'com.github.johnrengelman.shadow' version '6.1.0'
 }
 
 version = '0.0.1'
@@ -17,12 +19,13 @@ dependencies {
     // aws sdk imports.
     implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.882'))
     implementation('com.amazonaws:aws-java-sdk-core')
-    //TODO: move to latest version of jackson and slf4j
     implementation('com.fasterxml.jackson.core:jackson-databind:2.6.7')
     implementation('org.slf4j:slf4j-api:1.7.25')
 
     //test dependencies
-    testImplementation('org.apache.kafka:kafka-clients:2.2.1', 'org.junit.jupiter:junit-jupiter-api:5.7.0')
+    testImplementation('org.apache.kafka:kafka-clients:2.2.1',
+            'org.junit.jupiter:junit-jupiter-api:5.7.0',
+            'org.apache.commons:commons-lang3:3.11')
     testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0',
             'org.apache.logging.log4j:log4j-core:2.13.1',
             'org.apache.logging.log4j:log4j-slf4j-impl:2.13.1')

@@ -1,9 +1,29 @@
+/*
+  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License").
+  You may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
 package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionMetadata;
 import com.amazonaws.regions.RegionMetadataFactory;
+import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Value;
 
 import java.time.Instant;
 import java.util.Objects;
@@ -14,45 +34,25 @@ import java.util.Objects;
  * The class is versioned so that it can be extended if necessary in the future.
  **/
 
+@Getter
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 class AuthenticationRequestParams {
     private static final String VERSION_1 = "2020_10_22";
     private static final String SERVICE_SCOPE = "kafka-cluster";
 
     private static RegionMetadata regionMetadata = RegionMetadataFactory.create();
 
+    @NonNull
     private final String version;
+    @NonNull
     private final String host;
+    @NonNull
     private final AWSCredentials awsCredentials;
+    @NonNull
     private final Region region;
-
-    AuthenticationRequestParams(String version,
-            String host,
-            AWSCredentials awsCredentials,
-            Region region) {
-        this.version = Objects.requireNonNull(version);
-        this.host = Objects.requireNonNull(host);
-        this.awsCredentials = Objects.requireNonNull(awsCredentials);
-        this.region = Objects.requireNonNull(region);
-    }
 
     public String getServiceScope() {
         return SERVICE_SCOPE;
-    }
-
-    public Region getRegion() {
-        return region;
-    }
-
-    public String getHost() {
-        return host;
-    }
-
-    public AWSCredentials getAwsCredentials() {
-        return awsCredentials;
-    }
-
-    public String getVersion() {
-        return version;
     }
 
     public static AuthenticationRequestParams create(String host, AWSCredentials credentials)

@@ -1,6 +1,23 @@
+/*
+  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+
+  Licensed under the Apache License, Version 2.0 (the "License").
+  You may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+*/
 package com.amazonaws.msk.auth.iam.internals;
 
 import com.amazonaws.msk.auth.iam.IAMLoginModule;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.NonNull;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,11 +56,12 @@ public class IAMSaslClient implements SaslClient {
     private final String serverName;
     private final SignedPayloadGenerator payloadGenerator;
     private State state;
+    private String responseRequestId;
 
-    public IAMSaslClient(String mechanism,
-            CallbackHandler cbh,
-            String serverName,
-            SignedPayloadGenerator payloadGenerator) {
+    public IAMSaslClient(@NonNull String mechanism,
+            @NonNull CallbackHandler cbh,
+            @NonNull String serverName,
+            @NonNull SignedPayloadGenerator payloadGenerator) {
         this.mechanism = mechanism;
         this.cbh = cbh;
         this.serverName = serverName;
@@ -68,34 +86,23 @@ public class IAMSaslClient implements SaslClient {
         }
         try {
             switch (state) {
-                case SEND_CLIENT_FIRST_MESSAGE:
-                    //For the initial response, the challenge should be empty.
-                    if (!isChallengeEmpty(challenge)) {
-                        throw new SaslException("Expects an empty challenge in state " + state);
-                    }
-                    //Invoke the callback handler to fetch the credentials.
-                    final AWSCredentialsCallback callback = new AWSCredentialsCallback();
-                    cbh.handle(new Callback[]{callback});
-                    if (callback.isSuccessful()) {
-                        //Generate the signed payload
-                        final byte[] response = payloadGenerator.signedPayload(
-                                AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
-                        //transition to the state waiting to receive server response.
-                        setState(State.RECEIVE_SERVER_RESPONSE);
-                        return response;
-                    } else {
-                        throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
-                    }
-                case RECEIVE_SERVER_RESPONSE:
-                    //we expect the successful server response to be empty.
-                    if (!isChallengeEmpty(challenge)) {
-                        throw new SaslException("Expects an empty challenge in state " + state);
-                    }
-                    //At this point, the authentication is complete.
-                    setState(State.COMPLETE);
-                    return null;
-                default:
-                    throw new IllegalSaslStateException("Challenge received in unexpected state " + state);
+            case SEND_CLIENT_FIRST_MESSAGE:
+                //For the initial response, the challenge should be empty.
+                if (!isChallengeEmpty(challenge)) {
+                    throw new SaslException("Expects an empty challenge in state " + state);
+                }
+                return generateClientMessage();
+            case RECEIVE_SERVER_RESPONSE:
+                //we expect the successful server response to contain a non-empty challenge.
+                if (isChallengeEmpty(challenge)) {
+                    throw new SaslException("Expects a non-empty authentication response in state " + state);
+                }
+                handleServerResponse(challenge);
+                //At this point, the authentication is complete.
+                setState(State.COMPLETE);
+                return null;
+            default:
+                throw new IllegalSaslStateException("Challenge received in unexpected state " + state);
             }
         } catch (SaslException se) {
             setState(State.FAILED);
@@ -107,6 +114,36 @@ public class IAMSaslClient implements SaslClient {
             if (log.isDebugEnabled()) {
                 log.debug("State {} at end of evaluating challenge", state);
             }
+        }
+    }
+
+    private void handleServerResponse(byte[] challenge) throws IOException {
+        //If we got a non-empty server challenge, then the authentication succeeded on the server.
+        //Deserialize and log the server response as necessary.
+        ObjectMapper mapper = new ObjectMapper();
+        AuthenticationResponse response = mapper.readValue(challenge, AuthenticationResponse.class);
+        if (response == null) {
+            throw new SaslException("Invalid response from server ");
+        }
+        responseRequestId = response.getRequestId();
+        if (log.isDebugEnabled()) {
+            log.debug("Response from server: "+response.toString());
+        }
+    }
+
+    private byte[] generateClientMessage() throws IOException, UnsupportedCallbackException {
+        //Invoke the callback handler to fetch the credentials.
+        final AWSCredentialsCallback callback = new AWSCredentialsCallback();
+        cbh.handle(new Callback[] { callback });
+        if (callback.isSuccessful()) {
+            //Generate the signed payload
+            final byte[] response = payloadGenerator.signedPayload(
+                    AuthenticationRequestParams.create(serverName, callback.getAwsCredentials()));
+            //transition to the state waiting to receive server response.
+            setState(State.RECEIVE_SERVER_RESPONSE);
+            return response;
+        } else {
+            throw new SaslException("Failed to find AWS IAM Credentials", callback.getLoadingException());
         }
     }
 
@@ -143,6 +180,13 @@ public class IAMSaslClient implements SaslClient {
     public void dispose() throws SaslException {
     }
 
+    public String getResponseRequestId() {
+        if (!isComplete()) {
+            throw new IllegalStateException("Authentication exchange has not completed");
+        }
+        return responseRequestId;
+    }
+
     private void setState(State state) {
         if (log.isDebugEnabled()) {
             log.debug("Setting SASL/{} client state to {}", mechanism, state);
@@ -177,7 +221,7 @@ public class IAMSaslClient implements SaslClient {
 
         @Override
         public String[] getMechanismNames(Map<String, ?> props) {
-            return new String[]{IAMLoginModule.MECHANISM};
+            return new String[] { IAMLoginModule.MECHANISM };
         }
     }
 
