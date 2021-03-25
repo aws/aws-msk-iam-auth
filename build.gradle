@@ -2,6 +2,8 @@ plugins {
     id 'java-library'
     id "io.freefair.lombok" version "5.3.0"
     id 'com.github.johnrengelman.shadow' version '6.1.0'
+    id 'maven-publish'
+    id 'signing'
 }
 
 
@@ -9,6 +11,11 @@ sourceCompatibility = 1.8
 
 repositories {
     mavenCentral()
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
 }
 
 import java.nio.file.Paths
@@ -28,6 +35,7 @@ def readVersion() {
 }
 
 version = readVersion()
+group "software.amazon.msk"
 
 dependencies {
     //see if this should be compileOnly
@@ -61,6 +69,58 @@ test {
     useJUnitPlatform {
         excludeTags 'incomplete'
     }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            pom {
+                name = "Amazon MSK Library for AWS Identity and Access Management"
+                packaging = "jar"
+                url = "https://docs.aws.amazon.com/msk/latest/developerguide/kafka_apis_iam.html"
+                description = "The Amazon MSK Library for AWS Identity and Access Management allows JVM based Apache " +
+                        "Kafka clients to use AWS IAM for authentication and authorization against Amazon MSK " +
+                        "clusters that have AWS IAM enabled as an authentication mechanism"
+                scm {
+                    url = "https://github.com/aws/aws-msk-iam-auth"
+                    connection = "https://github.com/aws/aws-msk-iam-auth.git"
+                }
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "amazonwebservices"
+                        organization = "Amazon Web Services"
+                        organizationUrl = "https://aws.amazon.com"
+                    }
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "sonatype-staging"
+            url "https://aws.oss.sonatype.org/service/local/staging/deploy/maven2"
+            credentials {
+                username project.hasProperty('ossrhUsername') ? project.property('ossrhUsername') : ""
+                password project.hasProperty('ossrhPassword') ? project.property('ossrhPassword') : ""
+            }
+        }
+    }
+
+}
+signing {
+    def signingKey = project.hasProperty('signingKey') ? project.property('signingKey') : ""
+    def signingPassword = project.hasProperty('signingPassword') ? project.property('signingPassword') : ""
+    useInMemoryPgpKeys(signingKey, signingPassword)
+    sign publishing.publications.mavenJava
 }
 
 
