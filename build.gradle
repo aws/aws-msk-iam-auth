@@ -4,7 +4,6 @@ plugins {
     id 'com.github.johnrengelman.shadow' version '6.1.0'
 }
 
-version = '0.0.1'
 
 sourceCompatibility = 1.8
 
@@ -12,6 +11,23 @@ repositories {
     mavenCentral()
 }
 
+import java.nio.file.Paths
+
+def readVersion() {
+    def versionPropsFile = file(Paths.get("src","main","resources","version.properties"))
+    if (versionPropsFile.canRead()) {
+        Properties versionProps = new Properties()
+
+        if (versionPropsFile.canRead()) {
+            versionProps.load(new FileInputStream(versionPropsFile))
+        }
+        versionProps['version']
+    } else {
+        throw new GradleException("Could not read version.properties!")
+    }
+}
+
+version = readVersion()
 
 dependencies {
     //see if this should be compileOnly
@@ -25,11 +41,21 @@ dependencies {
     //test dependencies
     testImplementation('org.apache.kafka:kafka-clients:2.2.1',
             'org.junit.jupiter:junit-jupiter-api:5.7.0',
-            'org.apache.commons:commons-lang3:3.11')
+            'org.apache.commons:commons-lang3:3.11',
+            'org.mockito:mockito-inline:3.6.0')
     testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0',
             'org.apache.logging.log4j:log4j-core:2.13.1',
             'org.apache.logging.log4j:log4j-slf4j-impl:2.13.1')
 }
+
+import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
+
+task relocateShadowJar(type: ConfigureShadowRelocation) {
+    target = tasks.shadowJar
+    prefix = "aws-msk-iam-auth-shadow"
+}
+
+tasks.shadowJar.dependsOn tasks.relocateShadowJar
 
 test {
     useJUnitPlatform {
