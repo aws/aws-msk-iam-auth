@@ -85,7 +85,8 @@ publishing {
                         "clusters that have AWS IAM enabled as an authentication mechanism"
                 scm {
                     url = "https://github.com/aws/aws-msk-iam-auth"
-                    connection = "https://github.com/aws/aws-msk-iam-auth.git"
+                    connection = "scm:git:https://github.com/aws/aws-msk-iam-auth.git"
+                    developerConnection = "scm:git:git@github.com:aws/aws-msk-iam-auth.git"
                 }
                 licenses {
                     license {
