@@ -36,7 +36,7 @@ import java.util.Optional;
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
  * 2. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
- * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html>Working with AWS Credentials</a>
+ * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
 public class MSKCredentialProvider implements AWSCredentialsProvider {
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
