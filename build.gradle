@@ -38,10 +38,9 @@ version = readVersion()
 group "software.amazon.msk"
 
 dependencies {
-    //see if this should be compileOnly
     compileOnly('org.apache.kafka:kafka-clients:2.2.1')
     // aws sdk imports.
-    implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.882'))
+    implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.986'))
     implementation('com.amazonaws:aws-java-sdk-core')
     implementation('com.fasterxml.jackson.core:jackson-databind:2.6.7')
     implementation('org.slf4j:slf4j-api:1.7.25')
@@ -67,7 +66,7 @@ tasks.shadowJar.dependsOn tasks.relocateShadowJar
 
 test {
     useJUnitPlatform {
-        excludeTags 'incomplete'
+        excludeTags 'ignored'
     }
 }
 

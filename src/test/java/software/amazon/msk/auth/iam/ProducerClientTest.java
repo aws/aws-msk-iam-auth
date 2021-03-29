@@ -26,7 +26,7 @@ public class ProducerClientTest {
     private static final String SASL_IAM_JAAS_CONFIG_VALUE = "IAMLoginModule required awsProfileName=\"dadada bbbb\";";
 
    @Test
-   @Tag("incomplete")
+   @Tag("ignored")
     public void testProducer() {
         Properties producerProperties = new Properties();
         producerProperties.put("bootstrap.servers", "localhost:9092");

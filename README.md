@@ -53,11 +53,11 @@ security.protocol = SASL_SSL
 sasl.mechanism = AWS_MSK_IAM
 
 # Binds SASL client implementation.
-sasl.jaas.config = software.amazozn.msk.auth.iam.IAMLoginModule required;
+sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required;
 
 # Encapsulates constructing a SigV4 signature based on extracted credentials.
 # The SASL client bound by "sasl.jaas.config" invokes this class.
-sasl.client.callback.handler.class = software.amazozn.msk.auth.iam.IAMClientCallbackHandler
+sasl.client.callback.handler.class = software.amazon.msk.auth.iam.IAMClientCallbackHandler
 ```
 This configuration finds IAM credentials using the [AWS Default Credentials Provider Chain][DefaultCreds]. To summarize,
 the Default Credential Provider Chain looks for credentials in this order:
@@ -78,7 +78,7 @@ If the client wants to specify a particular credential profile as part of the cl
 the environment variable AWS_PROFILE, they can pass in the name of the profile as a client configuration property:
 ```properties
 # Binds SASL client implementation. Uses the specified profile name to look for credentials.
-sasl.jaas.config = software.amazozn.msk.auth.iam.IAMLoginModule required awsProfileName="<Credential Profile Name
+sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName="<Credential Profile Name
 >";
 ```
 

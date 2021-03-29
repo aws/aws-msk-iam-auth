@@ -128,7 +128,7 @@ public class IAMSaslClient implements SaslClient {
         }
         responseRequestId = response.getRequestId();
         if (log.isDebugEnabled()) {
-            log.debug("Response from server: "+response.toString());
+            log.debug("Response from server: " + response.toString());
         }
     }
 
