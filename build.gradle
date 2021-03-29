@@ -1,0 +1,126 @@
+plugins {
+    id 'java-library'
+    id "io.freefair.lombok" version "5.3.0"
+    id 'com.github.johnrengelman.shadow' version '6.1.0'
+    id 'maven-publish'
+    id 'signing'
+}
+
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+java {
+    withSourcesJar()
+    withJavadocJar()
+}
+
+import java.nio.file.Paths
+
+def readVersion() {
+    def versionPropsFile = file(Paths.get("src","main","resources","version.properties"))
+    if (versionPropsFile.canRead()) {
+        Properties versionProps = new Properties()
+
+        if (versionPropsFile.canRead()) {
+            versionProps.load(new FileInputStream(versionPropsFile))
+        }
+        versionProps['version']
+    } else {
+        throw new GradleException("Could not read version.properties!")
+    }
+}
+
+version = readVersion()
+group "software.amazon.msk"
+
+dependencies {
+    compileOnly('org.apache.kafka:kafka-clients:2.2.1')
+    // aws sdk imports.
+    implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.986'))
+    implementation('com.amazonaws:aws-java-sdk-core')
+    implementation('com.fasterxml.jackson.core:jackson-databind:2.6.7')
+    implementation('org.slf4j:slf4j-api:1.7.25')
+
+    //test dependencies
+    testImplementation('org.apache.kafka:kafka-clients:2.2.1',
+            'org.junit.jupiter:junit-jupiter-api:5.7.0',
+            'org.apache.commons:commons-lang3:3.11',
+            'org.mockito:mockito-inline:3.6.0')
+    testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0',
+            'org.apache.logging.log4j:log4j-core:2.13.1',
+            'org.apache.logging.log4j:log4j-slf4j-impl:2.13.1')
+}
+
+import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
+
+task relocateShadowJar(type: ConfigureShadowRelocation) {
+    target = tasks.shadowJar
+    prefix = "aws-msk-iam-auth-shadow"
+}
+
+tasks.shadowJar.dependsOn tasks.relocateShadowJar
+
+test {
+    useJUnitPlatform {
+        excludeTags 'ignored'
+    }
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            pom {
+                name = "Amazon MSK Library for AWS Identity and Access Management"
+                packaging = "jar"
+                url = "https://docs.aws.amazon.com/msk/latest/developerguide/kafka_apis_iam.html"
+                description = "The Amazon MSK Library for AWS Identity and Access Management allows JVM based Apache " +
+                        "Kafka clients to use AWS IAM for authentication and authorization against Amazon MSK " +
+                        "clusters that have AWS IAM enabled as an authentication mechanism"
+                scm {
+                    url = "https://github.com/aws/aws-msk-iam-auth"
+                    connection = "scm:git:https://github.com/aws/aws-msk-iam-auth.git"
+                    developerConnection = "scm:git:git@github.com:aws/aws-msk-iam-auth.git"
+                }
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "amazonwebservices"
+                        organization = "Amazon Web Services"
+                        organizationUrl = "https://aws.amazon.com"
+                    }
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "sonatype-staging"
+            url "https://aws.oss.sonatype.org/service/local/staging/deploy/maven2"
+            credentials {
+                username project.hasProperty('ossrhUsername') ? project.property('ossrhUsername') : ""
+                password project.hasProperty('ossrhPassword') ? project.property('ossrhPassword') : ""
+            }
+        }
+    }
+
+}
+signing {
+    def signingKey = project.hasProperty('signingKey') ? project.property('signingKey') : ""
+    def signingPassword = project.hasProperty('signingPassword') ? project.property('signingPassword') : ""
+    useInMemoryPgpKeys(signingKey, signingPassword)
+    sign publishing.publications.mavenJava
+}
+
+
