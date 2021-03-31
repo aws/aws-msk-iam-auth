@@ -23,10 +23,10 @@ import org.junit.jupiter.api.Test;
 import java.util.Properties;
 
 public class ProducerClientTest {
-    private static final String SASL_IAM_JAAS_CONFIG_VALUE = "IAMLoginModule required awsProfileName=\"dadada bbbb\";";
+    private static final String SASL_IAM_JAAS_CONFIG_VALUE = "software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName=\"dadada bbbb\";";
 
-   @Test
-   @Tag("ignored")
+    @Test
+    @Tag("ignored")
     public void testProducer() {
         Properties producerProperties = new Properties();
         producerProperties.put("bootstrap.servers", "localhost:9092");
@@ -35,8 +35,9 @@ public class ProducerClientTest {
         producerProperties.put("sasl.jaas.config", SASL_IAM_JAAS_CONFIG_VALUE);
         producerProperties.put("security.protocol", "SASL_SSL");
         producerProperties.put("sasl.mechanism", "AWS_MSK_IAM");
-        producerProperties.put("sasl.client.callback.handler.class", "IAMClientCallbackHandler");
-        KafkaProducer<String,String> producer = new KafkaProducer<String, String>(producerProperties);
-        producer.send(new ProducerRecord<>("test","keys", "values"));
+        producerProperties
+                .put("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
+        KafkaProducer<String, String> producer = new KafkaProducer<String, String>(producerProperties);
+        producer.send(new ProducerRecord<>("test", "keys", "values"));
     }
 }

@@ -42,7 +42,7 @@ dependencies {
     // aws sdk imports.
     implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.986'))
     implementation('com.amazonaws:aws-java-sdk-core')
-    implementation('com.fasterxml.jackson.core:jackson-databind:2.6.7')
+    implementation('com.fasterxml.jackson.core:jackson-databind:2.12.2')
     implementation('org.slf4j:slf4j-api:1.7.25')
 
     //test dependencies
