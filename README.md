@@ -78,8 +78,7 @@ If the client wants to specify a particular credential profile as part of the cl
 the environment variable AWS_PROFILE, they can pass in the name of the profile as a client configuration property:
 ```properties
 # Binds SASL client implementation. Uses the specified profile name to look for credentials.
-sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName="<Credential Profile Name
->";
+sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName="<Credential Profile Name>";
 ```
 
 ## Details
