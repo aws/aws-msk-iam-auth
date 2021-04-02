@@ -33,7 +33,7 @@ The recommended way to use this library is to consume it from maven central whil
 
   ``` xml
   <dependency>
-      <groupId>software.amazozn.msk</groupId>
+      <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
       <version>1.0.0</version>
   </dependency>
