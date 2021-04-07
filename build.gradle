@@ -59,7 +59,7 @@ import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocatio
 
 task relocateShadowJar(type: ConfigureShadowRelocation) {
     target = tasks.shadowJar
-    prefix = "aws-msk-iam-auth-shadow"
+    prefix = "aws_msk_iam_auth_shadow"
 }
 
 tasks.shadowJar.dependsOn tasks.relocateShadowJar
