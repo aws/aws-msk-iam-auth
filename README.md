@@ -135,7 +135,7 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 
 [MSK]: https://aws.amazon.com/msk/
 [IAM]: https://aws.amazon.com/iam/
-[MSK_IAM]: https://docs.aws.amazon.com/msk/latest/developerguide/kafka_apis_iam.html
+[MSK_IAM]: https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html
 [DefaultCreds]: https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
 [CredsFile]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
 [PreSigned]: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
