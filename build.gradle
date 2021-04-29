@@ -4,6 +4,7 @@ plugins {
     id 'com.github.johnrengelman.shadow' version '6.1.0'
     id 'maven-publish'
     id 'signing'
+    id 'org.owasp.dependencycheck' version '6.1.6'
 }
 
 
@@ -38,7 +39,7 @@ version = readVersion()
 group "software.amazon.msk"
 
 dependencies {
-    compileOnly('org.apache.kafka:kafka-clients:2.2.1')
+    compileOnly('org.apache.kafka:kafka-clients:2.4.1')
     // aws sdk imports.
     implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.986'))
     implementation('com.amazonaws:aws-java-sdk-core')
