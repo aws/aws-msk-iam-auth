@@ -79,7 +79,7 @@ publishing {
             pom {
                 name = "Amazon MSK Library for AWS Identity and Access Management"
                 packaging = "jar"
-                url = "https://docs.aws.amazon.com/msk/latest/developerguide/kafka_apis_iam.html"
+                url = "https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html"
                 description = "The Amazon MSK Library for AWS Identity and Access Management allows JVM based Apache " +
                         "Kafka clients to use AWS IAM for authentication and authorization against Amazon MSK " +
                         "clusters that have AWS IAM enabled as an authentication mechanism"
