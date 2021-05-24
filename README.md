@@ -171,9 +171,9 @@ The query string parameters are in order:
 * `"X-Amz-Algorithm"`: Describes the algorithm used to calculate the signature. Currently it is `"AWS4-HMAC-SHA256"`
 * `"X-Amz-Credential"`: Contains the access key ID, timestamp in `yyyyMMdd` format, the scope of the credential and
  the constant string `aws4_request`. The scope is defined as the AWS region of the Kafka broker and the name of the 
- service ("kafka-cluster" in this case). For example if the broker is in `us-west-2` region, the scope is `us-west-2
- /kafka-cluster`. This scope will be used again later to calculate the signature in [String To Sign](#string-to-sign
- ) and must match the one  used to calculate the signature. 
+ service ("kafka-cluster" in this case). For example if the broker is in `us-west-2` region, the scope is `us-west-2/kafka-cluster`.
+  This scope will be used again later to calculate the signature in [String To Sign](#string-to-sign) and must 
+  match the one  used to calculate the signature. 
 * `"X-Amz-Date"`: The date and time format must follow the ISO 8601 standard, and must be formatted with the
  "yyyyMMddTHHmmssZ" format. The date and time must be in UTC.
 * `"X-Amz-Expires"` :  Provides the time period, in seconds, for which the generated presigned URL is valid. We
@@ -202,7 +202,7 @@ Since the payload is empty the `<HashedPayload>` is calculated as
 Hex(SHA256Hash(""))
 ```
 where 
-* `Hex` is a function to do Lowercase base 16 encoding.
+* `Hex` is a function to do lowercase base 16 encoding.
 * `SHA256Hash` is a Secure Hash Algorithm (SHA) cryptographic hash function.
 
 ### String To Sign
@@ -215,12 +215,12 @@ The String to Sign is calculated as:
 Hex(SHA256Hash(<CanonicalRequest>))
 ```
 where 
-* `Hex` is a function to do Lowercase base 16 encoding.
+* `Hex` is a function to do lowercase base 16 encoding.
 * `SHA256Hash` is a Secure Hash Algorithm (SHA) cryptographic hash function.
 
 The `<Scope>` is defined as the AWS region of the Kafka broker and the name of the service ("kafka-cluster" in this
  case). For example if the broker is in `us-west-2` region, the scope is `"us-west-2/kafka-cluster"`. It must be the same scope
-as was defined for the `"X-Amz-Credential"` query parameter. 
+as was defined for the `"X-Amz-Credential"` query parameter while generating the [canonical query string](#canonical-query-string).
 
 ### Calculate Signature
 The signature is calculated by:
@@ -232,7 +232,7 @@ SigningKey           = HMAC-SHA256(<DateRegionServiceKey>, "aws4_request")
 Signature            = Hex(HMAC-SHA256(<SigningKey>, <StringToSign>))
 ```
 where
-* `Hex` is a function to do Lowercase base 16 encoding.
+* `Hex` is a function to do lowercase base 16 encoding.
 * `HMAC-SHA256` is a function that computes HMAC by using the SHA256 algorithm with the signing key provided. 
 
 The `<Signature>` is the final signature.
@@ -244,7 +244,7 @@ The following keys in the authentication payload json are constant:
 * `"user-agent"` 
 
 All the query parameters calculated earlier are added to the authentication payload json. The keys are lower case
- strings and the values are the ones calculated earlier but not uri encoded:
+ strings and the values are the ones calculated [earlier](#canonical-query-string) but the values are not uri encoded:
 * `"action"`
 * `"x-amz-algorithm"`
 * `"x-amz-credential"`
@@ -256,8 +256,26 @@ All the query parameters calculated earlier are added to the authentication payl
 The host header is added to the authentication payload json
 * `"host"` and its value is set to the hostname of the broker being connected.
 
-The `<Signature>` calculated [earlier](#calculate-signature) is added to the authentication payload json as
+The `<Signature>` calculated in the [previous step](#calculate-signature) is added to the authentication payload json as
 * `"x-amz-signature"` and its value is set to`<Signature>` 
+
+This finally yields the authentication payload that looks like
+```json
+{
+    "version" : "2020_10_22",
+    "host" : "<broker address>",
+    "user-agent": "<user agent string from the client>",
+    "action": "kafka-cluster:Connect",
+    "x-amz-algorithm" : "<algorithm>",
+    "x-amz-credential" : "<clientAWSAccessKeyID>/<date in yyyyMMdd format>/<region>/kafka-cluster/aws4_request",
+    "x-amz-date" : "<timestamp in yyyyMMdd'T'HHmmss'Z' format>",
+    "x-amz-security-token" : "<clientAWSSessionToken if any>",
+    "x-amz-signedheaders" : "host",
+    "x-amz-expires" : "<expiration in seconds>",
+    "x-amz-signature" : "<AWS SigV4 signature computed by the client>"
+}
+``` 
+## Message Exchange with Kafka Broker
 
 This authentication payload is sent as the first message from the client to the Kafka broker. The kafka broker then
  responds with a challenge. We expect a non-empty response from the broker if authentication using AWS IAM succeeded.
