@@ -60,9 +60,10 @@ public class IAMClientCallbackHandlerTest {
     @Test
     public void testDifferentCallback() {
         IAMClientCallbackHandler clientCallbackHandler = new IAMClientCallbackHandler();
-        assertThrows(UnsupportedCallbackException.class,
+        UnsupportedCallbackException callbackException = assertThrows(UnsupportedCallbackException.class,
                 () -> clientCallbackHandler.handle(new Callback[]{new Callback() {
                 }}));
+        assertTrue(callbackException.getMessage().startsWith("Unsupported"));
     }
 
 
