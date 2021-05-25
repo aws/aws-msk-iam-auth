@@ -65,7 +65,12 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
             if (callback instanceof AWSCredentialsCallback) {
                 handleCallback((AWSCredentialsCallback) callback);
             } else {
-                throw new UnsupportedCallbackException(callback);
+                String message = "Unsupported callback type:" + callback.getClass().getName();
+                //We are breaking good practice and logging as well as throwing since this is where client side
+                //integrations might have trouble. Depending on the client framework either logging or throwing might
+                //surface the error more easily to the user.
+                log.error(message);
+                throw new UnsupportedCallbackException(callback, message);
             }
         }
     }
