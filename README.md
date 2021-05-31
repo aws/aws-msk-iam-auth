@@ -68,7 +68,7 @@ the Default Credential Provider Chain looks for credentials in this order:
 1. The default credential profiles file– typically located at ~/.aws/credentials (location can vary per platform), and shared by many of the AWS SDKs and by the AWS CLI.  
 You can create a credentials file by using the aws configure command provided by the AWS CLI, or you can create it by editing the file with a text editor. For information about the credentials file format, see [AWS Credentials File Format][CredsFile].
 1. It can be used to load credentials from credential profiles other than the default one by setting the environment variable  
-AWS_PROFILE to the name of the alternate credential profile. Profiles can be used to load credentials from other sources such as AWS IAM Roles or Single Sign On. See [AWS Credentials File Format][CredsFile] for more details.
+AWS_PROFILE to the name of the alternate credential profile. Profiles can be used to load credentials from other sources such as AWS IAM Roles. See [AWS Credentials File Format][CredsFile] for more details. Please note that this library does not support Single Sign On (SSO) yet. We are [looking into it](https://github.com/aws/aws-msk-iam-auth/issues/16).
 1. Amazon ECS container credentials– loaded from the Amazon ECS if the environment variable AWS_CONTAINER_CREDENTIALS_RELATIVE_URI is set. 
 1. Instance profile credentials: used on EC2 instances, and delivered through the Amazon EC2 metadata service.
 
