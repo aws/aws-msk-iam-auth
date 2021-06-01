@@ -94,7 +94,7 @@ In such a case, we create a credential profile called `msk_client` that assumes 
 The credential profile looks like:
 
 ```
-[profile msk_client]
+[msk_client]
 role_arn = arn:aws:iam::123456789012:role/msk_client_role
 credential_source = Ec2InstanceMetadata
 ```
