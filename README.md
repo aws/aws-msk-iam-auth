@@ -80,6 +80,31 @@ the environment variable AWS_PROFILE, they can pass in the name of the profile a
 # Binds SASL client implementation. Uses the specified profile name to look for credentials.
 sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName="<Credential Profile Name>";
 ```
+### Specifying a role based credential profile for a client
+
+If the client wants to assume a role and use the role's temporary credentials to communicate with a MSK cluster, they
+ should create a credential profile for that role following the rules for [Using an IAM role in the CLI][RoleProfileCLI].
+ They can then pass in the name of the credential profile as described [above](#specifying-an-alternate-credential-profile-for-a-client).
+ 
+As an example, let's say a Kafka client is running on an Ec2 instance and the Kafka client wants to use an IAM role
+ called `msk_client_role`. The Ec2 instance profile has permissions to assume the `msk_client_role` IAM role although
+  `msk_client_role` is not attached to the instance profile.
+
+In such a case, we create a credential profile called `msk_client` that assumes the role `msk_client_role`. 
+The credential profile looks like:
+
+```
+[profile msk_client]
+role_arn = arn:aws:iam::123456789012:role/msk_client_role
+credential_source = Ec2InstanceMetadata
+```
+The credential profile name `msk_client` is passed in as a client configuration property:
+```properties
+sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName="msk_client";
+```
+
+Many more examples of configuring credential profiles with IAM roles can be found in [Using an IAM role in the CLI][RoleProfileCLI]. 
+
 
 ## Details
 This library introduces a new SASL mechanism called `AWS_MSK_IAM`. The `IAMLoginModule` is used to register the
@@ -340,3 +365,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 [CredsFile]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
 [PreSigned]: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 [AwsSDK]: https://github.com/aws/aws-sdk-java
+[RoleProfileCLI]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-role.html
