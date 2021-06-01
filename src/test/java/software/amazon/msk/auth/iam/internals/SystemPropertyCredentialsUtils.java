@@ -19,7 +19,6 @@ public final class SystemPropertyCredentialsUtils {
     private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
     private static final String SECRET_KEY_PROPERTY = "aws.secretKey";
     private static final String AWS_PROFILE_SYSTEM_PROPERTY = "aws.profile";
-    private static final String USER_HOME_PROPERTY = "user.home";
 
     private SystemPropertyCredentialsUtils() {
     }
@@ -47,21 +46,15 @@ public final class SystemPropertyCredentialsUtils {
     }
 
     public static void runTestWithSystemPropertyProfile(Runnable test,
-            String profileName,
-            String tempUserHome) {
+            String profileName) {
         String initialProfileName = System.getProperty(AWS_PROFILE_SYSTEM_PROPERTY);
-        String initialUserHome = System.getProperty(USER_HOME_PROPERTY);
         try {
             //Setup test system properties
             System.setProperty(AWS_PROFILE_SYSTEM_PROPERTY, profileName);
-            System.setProperty(USER_HOME_PROPERTY, tempUserHome);
             runTestWithSystemPropertyCredentials( test, "", "");
         } finally {
             if (initialProfileName != null) {
                 System.setProperty(AWS_PROFILE_SYSTEM_PROPERTY, initialProfileName);
-            }
-            if (initialUserHome != null) {
-                System.setProperty(USER_HOME_PROPERTY, initialUserHome);
             }
         }
     }
