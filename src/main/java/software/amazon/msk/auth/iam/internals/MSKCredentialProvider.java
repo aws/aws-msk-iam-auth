@@ -20,6 +20,7 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
 import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
+import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import org.slf4j.Logger;
@@ -40,27 +41,41 @@ import java.util.Optional;
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
-public class MSKCredentialProvider implements AWSCredentialsProvider {
+public class MSKCredentialProvider implements AWSCredentialsProvider, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
     private static final String AWS_PROFILE_NAME_KEY = "awsProfileName";
+    private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
+    private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
+
+    private final Optional<STSAssumeRoleSessionCredentialsProvider> stsRoleProvider;
     private final AWSCredentialsProvider delegate;
 
     public MSKCredentialProvider(Map<String, ?> options) {
-        this(options, getProfileProvider(options));
+        this(options, getProfileProvider(options), getStsRoleProvider(options));
     }
 
     MSKCredentialProvider(Map<String, ?> options,
             Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider) {
-        final List delegateList = getListOfDelegates(profileCredentialsProvider);
+        this(options, profileCredentialsProvider, Optional.empty());
+    }
+
+    MSKCredentialProvider(Map<String, ?> options,
+            Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider,
+            Optional<STSAssumeRoleSessionCredentialsProvider> roleSessionCredentialsProvider) {
+        stsRoleProvider = roleSessionCredentialsProvider;
+        final List delegateList = getListOfDelegates(profileCredentialsProvider, roleSessionCredentialsProvider);
         delegate = new AWSCredentialsProviderChain(delegateList);
         if (log.isDebugEnabled()) {
             log.debug("Number of options to configure credential provider {}", options.size());
         }
+
     }
 
-    private List getListOfDelegates(Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider) {
+    private List getListOfDelegates(Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider,
+            Optional<STSAssumeRoleSessionCredentialsProvider> roleSessionCredentialsProvider) {
         final List delegateList = new ArrayList<>();
         profileCredentialsProvider.ifPresent(delegateList::add);
+        roleSessionCredentialsProvider.ifPresent(delegateList::add);
         delegateList.add(getDefaultProvider());
         return delegateList;
     }
@@ -83,6 +98,17 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
         });
     }
 
+    private static Optional<STSAssumeRoleSessionCredentialsProvider> getStsRoleProvider(Map<String, ?> options) {
+        return Optional.ofNullable(options.get(AWS_ROLE_ARN_KEY)).map(p -> {
+            if (log.isDebugEnabled()) {
+                log.debug("Role ARN {}", p);
+            }
+            String sessionName = Optional.ofNullable((String) options.get(AWS_ROLE_SESSION_KEY))
+                    .orElse("aws-msk-iam-auth");
+            return new STSAssumeRoleSessionCredentialsProvider.Builder((String) p, sessionName).build();
+        });
+    }
+
     @Override
     public AWSCredentials getCredentials() {
         return delegate.getCredentials();
@@ -91,5 +117,10 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
     @Override
     public void refresh() {
         delegate.refresh();
+    }
+
+    @Override
+    public void close() {
+        stsRoleProvider.ifPresent(STSAssumeRoleSessionCredentialsProvider::close);
     }
 }
