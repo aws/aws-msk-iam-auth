@@ -18,8 +18,10 @@ package software.amazon.msk.auth.iam.internals;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
+import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
+import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
+import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +50,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
     }
 
     MSKCredentialProvider(Map<String, ?> options,
-            Optional<ProfileCredentialsProvider> profileCredentialsProvider) {
+            Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider) {
         final List delegateList = getListOfDelegates(profileCredentialsProvider);
         delegate = new AWSCredentialsProviderChain(delegateList);
         if (log.isDebugEnabled()) {
@@ -56,19 +58,28 @@ public class MSKCredentialProvider implements AWSCredentialsProvider {
         }
     }
 
-    private List getListOfDelegates(Optional<ProfileCredentialsProvider> profileCredentialsProvider) {
+    private List getListOfDelegates(Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider) {
         final List delegateList = new ArrayList<>();
         profileCredentialsProvider.ifPresent(delegateList::add);
-        delegateList.add(new DefaultAWSCredentialsProviderChain());
+        delegateList.add(getDefaultProvider());
         return delegateList;
     }
 
-    private static Optional<ProfileCredentialsProvider> getProfileProvider(Map<String, ?> options) {
+    //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
+    protected AWSCredentialsProviderChain getDefaultProvider() {
+        return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider(),
+                new SystemPropertiesCredentialsProvider(),
+                WebIdentityTokenCredentialsProvider.create(),
+                new EnhancedProfileCredentialsProvider(),
+                new EC2ContainerCredentialsProviderWrapper());
+    }
+
+    private static Optional<EnhancedProfileCredentialsProvider> getProfileProvider(Map<String, ?> options) {
         return Optional.ofNullable(options.get(AWS_PROFILE_NAME_KEY)).map(p -> {
             if (log.isDebugEnabled()) {
                 log.debug("Profile name {}", p);
             }
-            return new ProfileCredentialsProvider((String) p);
+            return new EnhancedProfileCredentialsProvider((String) p);
         });
     }
 

@@ -16,9 +16,13 @@
 package software.amazon.msk.auth.iam.internals;
 
 import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
-import com.amazonaws.auth.profile.ProfilesConfigFile;
+import com.amazonaws.auth.AWSCredentialsProviderChain;
+import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
+import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
+import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
+import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.profiles.ProfileFile;
 
 import java.io.File;
 import java.io.IOException;
@@ -92,49 +96,41 @@ public class MSKCredentialProviderTest {
     public void testChangingCredentials() throws IOException {
         runDefaultTest();
 
-        //Set up a temp directory with the aws profile
-        Path tempDir = Files.createTempDirectory("test_aws_home");
-        Path awsDir = Files.createDirectory(tempDir.resolve(".aws"));
-        Path tempCredsFile = awsDir.resolve("credentials");
-        Files.copy(Paths.get(getProfileResourceURL().getPath()), tempCredsFile);
+        runTestWithSystemPropertyProfile(() -> {
+            ProfileFile profileFile = getProfileFile();
+            MSKCredentialProvider provider = new MSKCredentialProvider(Collections.emptyMap()) {
+                protected AWSCredentialsProviderChain getDefaultProvider() {
+                    return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider(),
+                            new SystemPropertiesCredentialsProvider(),
+                            WebIdentityTokenCredentialsProvider.create(),
+                            new EnhancedProfileCredentialsProvider(profileFile, null),
+                            new EC2ContainerCredentialsProviderWrapper());
+                }
+            };
 
-        tempCredsFile.toFile().deleteOnExit();
-        awsDir.toFile().deleteOnExit();
-        tempDir.toFile().deleteOnExit();
+            AWSCredentials credentials = provider.getCredentials();
 
-        try {
-
-            runTestWithSystemPropertyProfile(() -> {
-                MSKCredentialProvider provider = new MSKCredentialProvider(Collections.emptyMap());
-
-                AWSCredentials credentials = provider.getCredentials();
-
-                assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
-                assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
-            }, TEST_PROFILE_NAME, tempDir.toString());
-        } finally {
-            Files.deleteIfExists(tempCredsFile);
-            Files.deleteIfExists(awsDir);
-            Files.deleteIfExists(tempDir);
-        }
+            assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
+            assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
+        }, TEST_PROFILE_NAME);
     }
 
     @Test
     public void testProfileName() {
-        ProfilesConfigFile profilesConfig = getProfilesConfigFile();
+        ProfileFile profileFile = getProfileFile();
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsProfileName", "test_profile");
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap,
-                 Optional.of(new ProfileCredentialsProvider(profilesConfig, TEST_PROFILE_NAME)));
+                 Optional.of(new EnhancedProfileCredentialsProvider(profileFile, TEST_PROFILE_NAME)));
 
         AWSCredentials credentials = provider.getCredentials();
         assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
         assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
     }
 
-    private ProfilesConfigFile getProfilesConfigFile() {
-        File file = new File(getProfileResourceURL().getFile());
-        return new ProfilesConfigFile(file);
+    private ProfileFile getProfileFile() {
+        return ProfileFile.builder().content( new File(getProfileResourceURL().getFile()).toPath()).type(
+                ProfileFile.Type.CREDENTIALS).build();
     }
 
     private URL getProfileResourceURL() {
