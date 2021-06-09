@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * This AWS Credential Provider is used to load up AWS Credentials based on options provided on the Jaas config line.
@@ -37,7 +38,9 @@ import java.util.Optional;
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
- * 2. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
+ * 2. A particular AWS IAM Role and optional AWS IAM role session name:
+ *     awsRoleArn={IAM Role ARN}, awsRoleSessionName = {session name}
+ * 3. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
@@ -47,37 +50,23 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
 
-    private final Optional<STSAssumeRoleSessionCredentialsProvider> stsRoleProvider;
-    private final AWSCredentialsProvider delegate;
+    private final List<AutoCloseable> closeableProviders;
+    private final AWSCredentialsProvider compositeDelegate;
 
     public MSKCredentialProvider(Map<String, ?> options) {
-        this(options, getProfileProvider(options), getStsRoleProvider(options));
+        this(new ProviderBuilder(options).getProviders());
     }
 
-    MSKCredentialProvider(Map<String, ?> options,
-            Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider) {
-        this(options, profileCredentialsProvider, Optional.empty());
+    MSKCredentialProvider(ProviderBuilder builder) {
+        this(builder.getProviders());
     }
 
-    MSKCredentialProvider(Map<String, ?> options,
-            Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider,
-            Optional<STSAssumeRoleSessionCredentialsProvider> roleSessionCredentialsProvider) {
-        stsRoleProvider = roleSessionCredentialsProvider;
-        final List delegateList = getListOfDelegates(profileCredentialsProvider, roleSessionCredentialsProvider);
-        delegate = new AWSCredentialsProviderChain(delegateList);
-        if (log.isDebugEnabled()) {
-            log.debug("Number of options to configure credential provider {}", options.size());
-        }
-
-    }
-
-    private List getListOfDelegates(Optional<EnhancedProfileCredentialsProvider> profileCredentialsProvider,
-            Optional<STSAssumeRoleSessionCredentialsProvider> roleSessionCredentialsProvider) {
-        final List delegateList = new ArrayList<>();
-        profileCredentialsProvider.ifPresent(delegateList::add);
-        roleSessionCredentialsProvider.ifPresent(delegateList::add);
+    MSKCredentialProvider(List<AWSCredentialsProvider> providers) {
+        List<AWSCredentialsProvider> delegateList = new ArrayList<>(providers);
         delegateList.add(getDefaultProvider());
-        return delegateList;
+        compositeDelegate = new AWSCredentialsProviderChain(delegateList);
+        closeableProviders = providers.stream().filter(p -> p instanceof AutoCloseable).map(p -> (AutoCloseable) p)
+                .collect(Collectors.toList());
     }
 
     //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
@@ -89,38 +78,71 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 new EC2ContainerCredentialsProviderWrapper());
     }
 
-    private static Optional<EnhancedProfileCredentialsProvider> getProfileProvider(Map<String, ?> options) {
-        return Optional.ofNullable(options.get(AWS_PROFILE_NAME_KEY)).map(p -> {
-            if (log.isDebugEnabled()) {
-                log.debug("Profile name {}", p);
-            }
-            return new EnhancedProfileCredentialsProvider((String) p);
-        });
-    }
-
-    private static Optional<STSAssumeRoleSessionCredentialsProvider> getStsRoleProvider(Map<String, ?> options) {
-        return Optional.ofNullable(options.get(AWS_ROLE_ARN_KEY)).map(p -> {
-            if (log.isDebugEnabled()) {
-                log.debug("Role ARN {}", p);
-            }
-            String sessionName = Optional.ofNullable((String) options.get(AWS_ROLE_SESSION_KEY))
-                    .orElse("aws-msk-iam-auth");
-            return new STSAssumeRoleSessionCredentialsProvider.Builder((String) p, sessionName).build();
-        });
-    }
-
     @Override
     public AWSCredentials getCredentials() {
-        return delegate.getCredentials();
+        return compositeDelegate.getCredentials();
     }
 
     @Override
     public void refresh() {
-        delegate.refresh();
+        compositeDelegate.refresh();
     }
 
     @Override
     public void close() {
-        stsRoleProvider.ifPresent(STSAssumeRoleSessionCredentialsProvider::close);
+        closeableProviders.stream().forEach(p -> {
+            try {
+                p.close();
+            } catch (Exception e) {
+                log.warn("Error closing credential provider", e);
+            }
+        });
+    }
+
+    public static class ProviderBuilder {
+        private final Map<String, ?> optionsMap;
+
+        public ProviderBuilder(Map<String, ?> optionsMap) {
+            this.optionsMap = optionsMap;
+            if (log.isDebugEnabled()) {
+                log.debug("Number of options to configure credential provider {}", optionsMap.size());
+            }
+        }
+
+        public List<AWSCredentialsProvider> getProviders() {
+            List<AWSCredentialsProvider> providers = new ArrayList<>();
+            getProfileProvider().ifPresent(providers::add);
+            getStsRoleProvider().ifPresent(providers::add);
+            return providers;
+        }
+
+        private Optional<EnhancedProfileCredentialsProvider> getProfileProvider() {
+            return Optional.ofNullable(optionsMap.get(AWS_PROFILE_NAME_KEY)).map(p -> {
+                if (log.isDebugEnabled()) {
+                    log.debug("Profile name {}", p);
+                }
+                return createEnhancedProfileCredentialsProvider((String) p);
+            });
+        }
+
+        EnhancedProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String p) {
+            return new EnhancedProfileCredentialsProvider(p);
+        }
+
+        private Optional<STSAssumeRoleSessionCredentialsProvider> getStsRoleProvider() {
+            return Optional.ofNullable(optionsMap.get(AWS_ROLE_ARN_KEY)).map(p -> {
+                if (log.isDebugEnabled()) {
+                    log.debug("Role ARN {}", p);
+                }
+                String sessionName = Optional.ofNullable((String) optionsMap.get(AWS_ROLE_SESSION_KEY))
+                        .orElse("aws-msk-iam-auth");
+                return createSTSRoleCredentialProvider((String) p, sessionName);
+            });
+        }
+
+        STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+                String sessionName) {
+            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName).build();
+        }
     }
 }
