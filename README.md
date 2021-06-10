@@ -68,7 +68,7 @@ the Default Credential Provider Chain looks for credentials in this order:
 1. The default credential profiles file– typically located at ~/.aws/credentials (location can vary per platform), and shared by many of the AWS SDKs and by the AWS CLI.  
 You can create a credentials file by using the aws configure command provided by the AWS CLI, or you can create it by editing the file with a text editor. For information about the credentials file format, see [AWS Credentials File Format][CredsFile].
 1. It can be used to load credentials from credential profiles other than the default one by setting the environment variable  
-AWS_PROFILE to the name of the alternate credential profile. Profiles can be used to load credentials from other sources such as AWS IAM Roles. See [AWS Credentials File Format][CredsFile] for more details. Please note that this library does not support Single Sign On (SSO) yet. We are [looking into it](https://github.com/aws/aws-msk-iam-auth/issues/16).
+AWS_PROFILE to the name of the alternate credential profile. Profiles can be used to load credentials from other sources such as AWS IAM Roles. See [AWS Credentials File Format][CredsFile] for more details.
 1. Amazon ECS container credentials– loaded from the Amazon ECS if the environment variable AWS_CONTAINER_CREDENTIALS_RELATIVE_URI is set. 
 1. Instance profile credentials: used on EC2 instances, and delivered through the Amazon EC2 metadata service.
 
@@ -80,10 +80,11 @@ the environment variable AWS_PROFILE, they can pass in the name of the profile a
 # Binds SASL client implementation. Uses the specified profile name to look for credentials.
 sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName="<Credential Profile Name>";
 ```
-### Specifying a role based credential profile for a client
+#### Specifying a role based credential profile for a client
 
-If the client wants to assume a role and use the role's temporary credentials to communicate with a MSK cluster, they
- should create a credential profile for that role following the rules for [Using an IAM role in the CLI][RoleProfileCLI].
+Some clients may want to assume a role and use the role's temporary credentials to communicate with a MSK
+ cluster. One way to do that is to create a credential profile for that role following the rules for 
+ [Using an IAM role in the CLI][RoleProfileCLI].
  They can then pass in the name of the credential profile as described [above](#specifying-an-alternate-credential-profile-for-a-client).
  
 As an example, let's say a Kafka client is running on an Ec2 instance and the Kafka client wants to use an IAM role
@@ -105,6 +106,21 @@ sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsProfi
 
 Many more examples of configuring credential profiles with IAM roles can be found in [Using an IAM role in the CLI][RoleProfileCLI]. 
 
+### Specifying an AWS IAM Role for a client
+The library supports another way to configure a client to assume an IAM role and use the role's temporary credentials.
+The IAM role's ARN and optionally the session name for the client can be passed in as client configuration property:
+
+```properties
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" awsRoleSessionName="prodoucer";
+```
+In this case, the `awsRoleArn` specifies the ARN for the IAM role the client should use and `awsRoleSessionName
+` specifies the session name that this particular client should use while assuming the IAM role. If the same IAM
+ Role is used in multiple contexts, the session names can be used to differentiate between the different contexts.
+The `awsRoleSessionName` is optional.
+ 
+The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
+For example, if the client is an EC2 instance, its instance profile should have permission to assume the
+ `msk_client_role`.
 
 ## Details
 This library introduces a new SASL mechanism called `AWS_MSK_IAM`. The `IAMLoginModule` is used to register the
