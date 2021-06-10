@@ -57,6 +57,13 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
 
     @Override
     public void close() {
+        try {
+            if (provider instanceof AutoCloseable) {
+                ((AutoCloseable) provider).close();
+            }
+        } catch (Exception e) {
+            log.warn("Error closing provider", e);
+        }
     }
 
     @Override
