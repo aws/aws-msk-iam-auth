@@ -35,7 +35,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>1.0.0</version>
+      <version>1.1.0</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -367,6 +367,10 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+### Release 1.1.0
+* Add support for credential profiles based on AWS Single Sign-On (SSO).
+* Add support for clients using IAM Roles without using credential profiles.
+* Bug fix for credential profiles with IAM Roles. 
 ### Release 1.0.0
 * First version of the Amazon MSK Library for IAM Authentication
 
