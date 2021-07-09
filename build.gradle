@@ -63,6 +63,13 @@ dependencies {
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
 
+shadowJar {
+    //We remove org.slf4j from the configuration as it gets included transitively by multiple dependencies and just
+    //removing it from the configuration being shadowed is not sufficient.
+    configurations = [project.configurations.runtimeClasspath.exclude([group: "org.slf4j", module: "slf4j-api"])]
+}
+
+
 task relocateShadowJar(type: ConfigureShadowRelocation) {
     target = tasks.shadowJar
     prefix = "aws_msk_iam_auth_shadow"
