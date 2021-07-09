@@ -21,12 +21,16 @@ SASL mechanism can be used by Kafka clients to authenticate against Amazon MSK c
 After you've downloaded the code from GitHub, you can build it using Gradle. Use this command:
  
  `gradle clean build`
+ 
+The generated jar files can be found at: `build/libs/`.
 
-An uber jar containing the library and all its relocated dependencies can also be built. Use this command: 
+An uber jar containing the library and all its relocated dependencies except the kafka client and `slf4j-api` can
+ also be built. Use this command: 
 
 `gradle clean shadowJar` 
 
-In both cases the generated jar files can be found at: `build/libs/`
+The generated uber jar file can also be found at: `build/libs/`. At runtime, the uber jar expects to find the kafka
+ client library and the `sl4j-api` library on the classpath. 
 
 ## Using the Amazon MSK Library for IAM Authentication
 The recommended way to use this library is to consume it from maven central while building a Kafka client application.
