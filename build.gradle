@@ -51,6 +51,8 @@ dependencies {
     implementation('com.fasterxml.jackson.core:jackson-databind:2.12.2')
     implementation('org.slf4j:slf4j-api:1.7.25')
 
+    runtimeOnly('software.amazon.awssdk:apache-client')
+
     //test dependencies
     testImplementation('org.apache.kafka:kafka-clients:2.2.1',
             'org.junit.jupiter:junit-jupiter-api:5.7.0',
@@ -72,7 +74,7 @@ shadowJar {
 
 task relocateShadowJar(type: ConfigureShadowRelocation) {
     target = tasks.shadowJar
-    prefix = "aws_msk_iam_auth_shadow"
+     prefix = "aws_msk_iam_auth_shadow"
 }
 
 tasks.shadowJar.dependsOn tasks.relocateShadowJar
