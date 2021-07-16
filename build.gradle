@@ -94,16 +94,14 @@ class FilteredConfigureShadowRelocation extends ConfigureShadowRelocation {
             }
         }
         packages.each { pkg ->
-            {
-                def shouldRelocate = true
-                relocationFilterPrefix.each { prefix ->
-                    if (pkg.startsWith(prefix)) {
-                        shouldRelocate = false
-                    }
+            def shouldRelocate = true
+            relocationFilterPrefix.each { prefix ->
+                if (pkg.startsWith(prefix)) {
+                    shouldRelocate = false
                 }
-                if (shouldRelocate) {
-                    target.relocate(pkg, "${prefix}.${pkg}")
-                }
+            }
+            if (shouldRelocate) {
+                target.relocate(pkg, "${prefix}.${pkg}")
             }
         }
 
