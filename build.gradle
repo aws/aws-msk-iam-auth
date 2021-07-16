@@ -72,9 +72,48 @@ shadowJar {
 }
 
 
-task relocateShadowJar(type: ConfigureShadowRelocation) {
+import java.util.jar.JarFile
+
+class FilteredConfigureShadowRelocation extends ConfigureShadowRelocation {
+
+    @Input
+    Set<String> relocationFilterPrefix
+
+    @TaskAction
+    void configureRelocation() {
+        def packages = [] as Set<String>
+        configurations.each { configuration ->
+            configuration.files.each { jar ->
+                JarFile jf = new JarFile(jar)
+                jf.entries().each { entry ->
+                    if (entry.name.endsWith(".class")) {
+                        packages << entry.name[0..entry.name.lastIndexOf('/')-1].replaceAll('/', '.')
+                    }
+                }
+                jf.close()
+            }
+        }
+        packages.each { pkg ->
+            {
+                def shouldRelocate = true
+                relocationFilterPrefix.each { prefix ->
+                    if (pkg.startsWith(prefix)) {
+                        shouldRelocate = false
+                    }
+                }
+                if (shouldRelocate) {
+                    target.relocate(pkg, "${prefix}.${pkg}")
+                }
+            }
+        }
+
+    }
+}
+
+task relocateShadowJar(type: FilteredConfigureShadowRelocation) {
     target = tasks.shadowJar
-     prefix = "aws_msk_iam_auth_shadow"
+    prefix = "aws_msk_iam_auth_shadow"
+    relocationFilterPrefix = ["org.slf4j", "software.amazon.awssdk"]
 }
 
 tasks.shadowJar.dependsOn tasks.relocateShadowJar
