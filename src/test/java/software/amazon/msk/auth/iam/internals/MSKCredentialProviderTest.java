@@ -151,7 +151,7 @@ public class MSKCredentialProviderTest {
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                    String sessionName) {
+                                                                                    String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals("aws-msk-iam-auth", sessionName);
                 return mockStsRoleProvider;
@@ -183,9 +183,43 @@ public class MSKCredentialProviderTest {
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                    String sessionName) {
+                                                                                    String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
+                return mockStsRoleProvider;
+            }
+        };
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+
+        AWSCredentials credentials = provider.getCredentials();
+        assertTrue(credentials instanceof BasicSessionCredentials);
+        BasicSessionCredentials sessionCredentials = (BasicSessionCredentials) credentials;
+        assertEquals(ACCESS_KEY_VALUE, sessionCredentials.getAWSAccessKeyId());
+        assertEquals(SECRET_KEY_VALUE, sessionCredentials.getAWSSecretKey());
+        assertEquals(SESSION_TOKEN, sessionCredentials.getSessionToken());
+
+        provider.close();
+        Mockito.verify(mockStsRoleProvider, times(1)).close();
+    }
+
+    @Test
+    public void testAwsRoleArnSessionNameAndStsRegion() {
+        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(STSAssumeRoleSessionCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.getCredentials())
+                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+        optionsMap.put("awsRoleSessionName", TEST_ROLE_SESSION_NAME);
+        optionsMap.put("awsStsRegion", "eu-west-1");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
+            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+                                                                                    String sessionName, String stsRegion) {
+                assertEquals(TEST_ROLE_ARN, roleArn);
+                assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
+                assertEquals("eu-west-1", stsRegion);
                 return mockStsRoleProvider;
             }
         };
@@ -219,7 +253,7 @@ public class MSKCredentialProviderTest {
                 return new EnhancedProfileCredentialsProvider(profileFile, TEST_PROFILE_NAME);
             }
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                    String sessionName) {
+                                                                                    String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals("aws-msk-iam-auth", sessionName);
                 return mockStsRoleProvider;
