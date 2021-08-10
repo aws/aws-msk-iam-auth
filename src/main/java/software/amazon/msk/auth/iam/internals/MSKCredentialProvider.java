@@ -23,6 +23,8 @@ import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +51,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_PROFILE_NAME_KEY = "awsProfileName";
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
+    private static final String AWS_STS_REGION = "awsStsRegion";
 
     private final List<AutoCloseable> closeableProviders;
     private final AWSCredentialsProvider compositeDelegate;
@@ -136,13 +139,20 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 }
                 String sessionName = Optional.ofNullable((String) optionsMap.get(AWS_ROLE_SESSION_KEY))
                         .orElse("aws-msk-iam-auth");
-                return createSTSRoleCredentialProvider((String) p, sessionName);
+                String stsRegion = Optional.ofNullable((String)optionsMap.get(AWS_STS_REGION))
+                        .orElse("aws-global");
+                return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion);
             });
         }
 
         STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                String sessionName) {
-            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName).build();
+                                                                                String sessionName, String stsRegion) {
+            AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
+                    .withRegion(stsRegion)
+                    .build();
+            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
+                    .withStsClient(stsClient)
+                    .build();
         }
     }
 }
