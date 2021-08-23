@@ -66,5 +66,13 @@ public class IAMClientCallbackHandlerTest {
         assertTrue(callbackException.getMessage().startsWith("Unsupported"));
     }
 
+    @Test
+    public void testDebugClassString() {
+        String debug1 = IAMClientCallbackHandler.debugClassString(this.getClass());
+        assertTrue(debug1.contains("software.amazon.msk.auth.iam.IAMClientCallbackHandlerTest"));
+        IAMClientCallbackHandler clientCallbackHandler = new IAMClientCallbackHandler();
+        String debug2 = IAMClientCallbackHandler.debugClassString(clientCallbackHandler.getClass());
+        assertTrue(debug2.contains("software.amazon.msk.auth.iam.IAMClientCallbackHandler"));
+    }
 
 }

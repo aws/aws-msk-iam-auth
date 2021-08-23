@@ -69,10 +69,15 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     @Override
     public void handle(@NonNull Callback[] callbacks) throws IOException, UnsupportedCallbackException {
         for (Callback callback : callbacks) {
+            if (log.isDebugEnabled()) {
+                log.debug("Type information for callback: " + debugClassString(callback.getClass()) + " from "
+                        + debugClassString(this.getClass()));
+            }
             if (callback instanceof AWSCredentialsCallback) {
                 handleCallback((AWSCredentialsCallback) callback);
             } else {
-                String message = "Unsupported callback type:" + callback.getClass().getName();
+                String message = "Unsupported callback type: " + debugClassString(callback.getClass()) + " from "
+                        + debugClassString(this.getClass());
                 //We are breaking good practice and logging as well as throwing since this is where client side
                 //integrations might have trouble. Depending on the client framework either logging or throwing might
                 //surface the error more easily to the user.
@@ -80,6 +85,10 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
                 throw new UnsupportedCallbackException(callback, message);
             }
         }
+    }
+
+    protected static String debugClassString(Class<?> clazz) {
+        return "class: " + clazz.getName() + " classloader: " + clazz.getClassLoader().toString();
     }
 
     protected void handleCallback(AWSCredentialsCallback callback) throws IOException {
