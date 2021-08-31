@@ -115,12 +115,18 @@ The library supports another way to configure a client to assume an IAM role and
 The IAM role's ARN and optionally the session name for the client can be passed in as client configuration property:
 
 ```properties
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" awsRoleSessionName="prodoucer";
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" awsRoleSessionName="producer"  awsStsRegion="us-west-2";
 ```
 In this case, the `awsRoleArn` specifies the ARN for the IAM role the client should use and `awsRoleSessionName
 ` specifies the session name that this particular client should use while assuming the IAM role. If the same IAM
  Role is used in multiple contexts, the session names can be used to differentiate between the different contexts.
 The `awsRoleSessionName` is optional.
+ 
+ `awsStsRegion` optionally specifies the regional endpoint of AWS STS to use 
+while assuming the IAM role. If `awsStsRegion` is omitted the global endpoint for AWS STS is used by default. 
+When the Kafka client is running in a VPC with an interface VPC Endpoint to a regional endpoint of AWS STS and we want
+ all STS traffic to go over that endpoint, we should set `awsStsRegion` to the region corresponding to the interface
+ VPC Endpoint.
  
 The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
