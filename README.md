@@ -131,6 +131,38 @@ When the Kafka client is running in a VPC with an interface VPC Endpoint to a re
 The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
+ 
+## Troubleshooting
+
+###Failed Authentication: Too many connects
+
+You may receive an error, indicating that authentication has failed due to `Too many connects`, similar to:
+```
+ ERROR org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-x] Connection to node 3 (...) failed
+ authentication due to: [446c81dc-9ab3-4d4b-b174-4ecd9baa406c]: Too many connects
+```
+
+This is a sign that one or more IAM clients are trying to connect to a particular broker too many times per second and
+ the broker is protecting itself.
+
+Setting the `reconnect.backoff.ms` to at least `1000` should help clients backoff and retry
+connections such that the broker does not need to reject new connections because of the connection rate. 
+
+The broker type determines the limit on the rate of new IAM connections per broker. Please note the limit is not about
+ the total number of connections per broker but the rate of new IAM connections per
+ broker. See the [limits page for MSK][MSKLimits] for the limit on the rate of new IAM connections per broker for
+  different broker types.
+
+### Kafka Connect: Unsupported callback type
+While using the library from a Kafka Connect client, you may see an error of the form:
+```
+[Producer clientId=connector-...] Failed authentication with BROKER (An error: (java.security.PrivilegedActionException: javax.security.sasl.SaslException: Exception while evaluating challenge [Caused by javax.security.auth.callback.UnsupportedCallbackException: Unsupported callback type:
+```
+This most commonly occurs when two different class loaders are used to load different classes used by the library. 
+It can happen when the `aws-msk-iam-auth` library is placed on the plugin path for Kafka Connect. Since the 
+library is actually used by the Kafka producer and consumer clients and not the Kafka Connect plugin itself, 
+it should be placed in a location that is on the classpath but outside the plugin path. This should ensure that Kafka
+ Connect's `PluginClassLoader` is not used to load classes for the `aws-msk-iam-auth` library.
 
 ## Details
 This library introduces a new SASL mechanism called `AWS_MSK_IAM`. The `IAMLoginModule` is used to register the
@@ -396,3 +428,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 [PreSigned]: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 [AwsSDK]: https://github.com/aws/aws-sdk-java
 [RoleProfileCLI]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-role.html
+[MSKLimits]: https://docs.aws.amazon.com/msk/latest/developerguide/limits.html
