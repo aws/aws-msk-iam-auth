@@ -134,7 +134,7 @@ For example, if the client is an EC2 instance, its instance profile should have 
  
 ## Troubleshooting
 
-###Failed Authentication: Too many connects
+### Failed Authentication: Too many connects
 
 You may receive an error, indicating that authentication has failed due to `Too many connects`, similar to:
 ```
@@ -409,6 +409,14 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+### Release 1.1.1
+* Enable support for STS regional endpoints when configured to assume a role (thanks dvuple@)
+* Additional logging to log the classes and classloaders for `IAMClientCallbackHandler` and `AWSCredentialsCallback
+` classes.
+* README updates to start a section on troubleshooting.
+* In the uber jar do not relocate the awsk sdk v2 modules.
+* In the uber jar, stop shadowing `slf4j-api`.
+
 ### Release 1.1.0
 * Add support for credential profiles based on AWS Single Sign-On (SSO).
 * Add support for clients using IAM Roles without using credential profiles.
