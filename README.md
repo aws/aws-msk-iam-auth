@@ -115,16 +115,54 @@ The library supports another way to configure a client to assume an IAM role and
 The IAM role's ARN and optionally the session name for the client can be passed in as client configuration property:
 
 ```properties
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" awsRoleSessionName="prodoucer";
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" awsRoleSessionName="producer"  awsStsRegion="us-west-2";
 ```
 In this case, the `awsRoleArn` specifies the ARN for the IAM role the client should use and `awsRoleSessionName
 ` specifies the session name that this particular client should use while assuming the IAM role. If the same IAM
  Role is used in multiple contexts, the session names can be used to differentiate between the different contexts.
 The `awsRoleSessionName` is optional.
  
+ `awsStsRegion` optionally specifies the regional endpoint of AWS STS to use 
+while assuming the IAM role. If `awsStsRegion` is omitted the global endpoint for AWS STS is used by default. 
+When the Kafka client is running in a VPC with an interface VPC Endpoint to a regional endpoint of AWS STS and we want
+ all STS traffic to go over that endpoint, we should set `awsStsRegion` to the region corresponding to the interface
+ VPC Endpoint.
+ 
 The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
+ 
+## Troubleshooting
+
+### Failed Authentication: Too many connects
+
+You may receive an error, indicating that authentication has failed due to `Too many connects`, similar to:
+```
+ ERROR org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-x] Connection to node 3 (...) failed
+ authentication due to: [446c81dc-9ab3-4d4b-b174-4ecd9baa406c]: Too many connects
+```
+
+This is a sign that one or more IAM clients are trying to connect to a particular broker too many times per second and
+ the broker is protecting itself.
+
+Setting the `reconnect.backoff.ms` to at least `1000` should help clients backoff and retry
+connections such that the broker does not need to reject new connections because of the connection rate. 
+
+The broker type determines the limit on the rate of new IAM connections per broker. Please note the limit is not about
+ the total number of connections per broker but the rate of new IAM connections per
+ broker. See the [limits page for MSK][MSKLimits] for the limit on the rate of new IAM connections per broker for
+  different broker types.
+
+### Kafka Connect: Unsupported callback type
+While using the library from a Kafka Connect client, you may see an error of the form:
+```
+[Producer clientId=connector-...] Failed authentication with BROKER (An error: (java.security.PrivilegedActionException: javax.security.sasl.SaslException: Exception while evaluating challenge [Caused by javax.security.auth.callback.UnsupportedCallbackException: Unsupported callback type:
+```
+This most commonly occurs when two different class loaders are used to load different classes used by the library. 
+It can happen when the `aws-msk-iam-auth` library is placed on the plugin path for Kafka Connect. Since the 
+library is actually used by the Kafka producer and consumer clients and not the Kafka Connect plugin itself, 
+it should be placed in a location that is on the classpath but outside the plugin path. This should ensure that Kafka
+ Connect's `PluginClassLoader` is not used to load classes for the `aws-msk-iam-auth` library.
 
 ## Details
 This library introduces a new SASL mechanism called `AWS_MSK_IAM`. The `IAMLoginModule` is used to register the
@@ -371,6 +409,14 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+### Release 1.1.1
+* Enable support for STS regional endpoints when configured to assume a role (thanks dvuple@)
+* Additional logging to log the classes and classloaders for `IAMClientCallbackHandler` and `AWSCredentialsCallback
+` classes.
+* README updates to start a section on troubleshooting.
+* In the uber jar do not relocate the awsk sdk v2 modules.
+* In the uber jar, stop shadowing `slf4j-api`.
+
 ### Release 1.1.0
 * Add support for credential profiles based on AWS Single Sign-On (SSO).
 * Add support for clients using IAM Roles without using credential profiles.
@@ -390,3 +436,4 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 [PreSigned]: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 [AwsSDK]: https://github.com/aws/aws-sdk-java
 [RoleProfileCLI]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-role.html
+[MSKLimits]: https://docs.aws.amazon.com/msk/latest/developerguide/limits.html
