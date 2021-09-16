@@ -134,6 +134,28 @@ For example, if the client is an EC2 instance, its instance profile should have 
  
 ## Troubleshooting
 
+### Finding out which identity is being used
+
+You may receive an `Access denied` error and there may be some doubt as to which credential is being exactly used. The 
+credential may be sourced from a role ARN, EC2 instance profile, credential profile etc. This may be particularly so
+ when cross account access is being attempted. 
+ If the client side logging is set to `DEBUG` and the client configuration property includes `awsDebugCreds` set to
+  `true`:
+ ```properties
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsDebugCreds=true;
+```
+the client library will print a debug log of the form:
+```
+DEBUG The identity of the credentials is {UserId: ARID4JIC6BCC6OK5OFDFGS:test124,Account: 12345678,Arn: arn:aws:sts::12345678:assumed-role/kada/test124} (software.amazon.msk.auth.iam.internals.MSKCredentialProvider)```
+```
+The log line provides the IAM Account, IAM user id and the ARN of the IAM Principal corresponding to the credential
+ being used. 
+ The `awsDebugCreds=true` parameter can be combined with any of the other parameters such as `awsRoleArn`,
+  `awsRoleSessionName`. 
+  
+ Please note that the log level should also be set to `DEBUG` for this information to be logged. 
+ It is not recommended to run with `awsDebugCreds=true` since it makes an additional remote call.
+
 ### Failed Authentication: Too many connects
 
 You may receive an error, indicating that authentication has failed due to `Too many connects`, similar to:

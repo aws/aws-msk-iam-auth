@@ -25,6 +25,10 @@ import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import lombok.AccessLevel;
+import lombok.Getter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,24 +56,30 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
     private static final String AWS_STS_REGION = "awsStsRegion";
+    private static final String AWS_DEBUG_CREDS_KEY = "awsDebugCreds";
 
     private final List<AutoCloseable> closeableProviders;
     private final AWSCredentialsProvider compositeDelegate;
+    @Getter(AccessLevel.PACKAGE)
+    private final Boolean shouldDebugCreds;
+    private final String stsRegion;
 
     public MSKCredentialProvider(Map<String, ?> options) {
-        this(new ProviderBuilder(options).getProviders());
+        this(new ProviderBuilder(options));
     }
 
     MSKCredentialProvider(ProviderBuilder builder) {
-        this(builder.getProviders());
+        this(builder.getProviders(), builder.shouldDebugCreds(), builder.getStsRegion());
     }
 
-    MSKCredentialProvider(List<AWSCredentialsProvider> providers) {
+   MSKCredentialProvider(List<AWSCredentialsProvider> providers, Boolean shouldDebugCreds, String stsRegion) {
         List<AWSCredentialsProvider> delegateList = new ArrayList<>(providers);
         delegateList.add(getDefaultProvider());
         compositeDelegate = new AWSCredentialsProviderChain(delegateList);
         closeableProviders = providers.stream().filter(p -> p instanceof AutoCloseable).map(p -> (AutoCloseable) p)
                 .collect(Collectors.toList());
+        this.shouldDebugCreds = shouldDebugCreds;
+        this.stsRegion = stsRegion;
     }
 
     //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
@@ -83,7 +93,34 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
     @Override
     public AWSCredentials getCredentials() {
-        return compositeDelegate.getCredentials();
+        AWSCredentials credentials = compositeDelegate.getCredentials();
+        if (credentials != null && shouldDebugCreds && log.isDebugEnabled()) {
+            logCallerIdentity(credentials);
+        }
+        return  credentials;
+    }
+
+    private void logCallerIdentity(AWSCredentials credentials) {
+        AWSSecurityTokenService stsClient = getStsClientForDebuggingCreds(credentials);
+        GetCallerIdentityResult response = stsClient.getCallerIdentity(new GetCallerIdentityRequest());
+        log.debug("The identity of the credentials is {}", response.toString());
+    }
+
+    AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
+        return AWSSecurityTokenServiceClientBuilder.standard()
+                    .withRegion(stsRegion)
+                    .withCredentials(new AWSCredentialsProvider() {
+                        @Override
+                        public AWSCredentials getCredentials() {
+                            return credentials;
+                        }
+
+                        @Override
+                        public void refresh() {
+
+                        }
+                    })
+                    .build();
     }
 
     @Override
@@ -119,6 +156,15 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             return providers;
         }
 
+        public Boolean shouldDebugCreds() {
+            return Optional.ofNullable(optionsMap.get(AWS_DEBUG_CREDS_KEY)).map(d -> d.equals("true")).orElse(false);
+        }
+
+        public String getStsRegion() {
+            return Optional.ofNullable((String)optionsMap.get(AWS_STS_REGION))
+                    .orElse("aws-global");
+        }
+
         private Optional<EnhancedProfileCredentialsProvider> getProfileProvider() {
             return Optional.ofNullable(optionsMap.get(AWS_PROFILE_NAME_KEY)).map(p -> {
                 if (log.isDebugEnabled()) {
@@ -139,8 +185,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 }
                 String sessionName = Optional.ofNullable((String) optionsMap.get(AWS_ROLE_SESSION_KEY))
                         .orElse("aws-msk-iam-auth");
-                String stsRegion = Optional.ofNullable((String)optionsMap.get(AWS_STS_REGION))
-                        .orElse("aws-global");
+                String stsRegion = getStsRegion();
                 return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion);
             });
         }

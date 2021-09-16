@@ -23,6 +23,9 @@ import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
+import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 import software.amazon.awssdk.profiles.ProfileFile;
@@ -35,7 +38,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static software.amazon.msk.auth.iam.internals.SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials;
 import static software.amazon.msk.auth.iam.internals.SystemPropertyCredentialsUtils.runTestWithSystemPropertyProfile;
@@ -53,6 +58,7 @@ public class MSKCredentialProviderTest {
     private static final String SESSION_TOKEN = "SESSION_TOKEN";
     private static final String AWS_ROLE_ARN = "awsRoleArn";
     private static final String AWS_PROFILE_NAME = "awsProfileName";
+    private static final String AWS_DEBUG_CREDS_NAME = "awsDebugCreds";
 
     /**
      * If no options are passed in it should use the default credentials provider
@@ -66,6 +72,7 @@ public class MSKCredentialProviderTest {
     private void runDefaultTest() {
         runTestWithSystemPropertyCredentials(() -> {
             MSKCredentialProvider provider = new MSKCredentialProvider(Collections.emptyMap());
+            assertFalse(provider.getShouldDebugCreds());
 
             AWSCredentials credentials = provider.getCredentials();
 
@@ -133,6 +140,7 @@ public class MSKCredentialProviderTest {
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
 
         AWSCredentials credentials = provider.getCredentials();
         assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
@@ -158,6 +166,7 @@ public class MSKCredentialProviderTest {
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
 
         AWSCredentials credentials = provider.getCredentials();
         assertTrue(credentials instanceof BasicSessionCredentials);
@@ -168,6 +177,48 @@ public class MSKCredentialProviderTest {
 
         provider.close();
         Mockito.verify(mockStsRoleProvider, times(1)).close();
+    }
+
+    @Test
+    public void testAwsRoleArnWithDebugCreds() {
+        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(STSAssumeRoleSessionCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.getCredentials())
+                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+        optionsMap.put(AWS_DEBUG_CREDS_NAME, "true");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
+            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+                    String sessionName, String stsRegion) {
+                assertEquals(TEST_ROLE_ARN, roleArn);
+                assertEquals("aws-msk-iam-auth", sessionName);
+                return mockStsRoleProvider;
+            }
+        };
+
+        AWSSecurityTokenService mockSts = Mockito.mock(AWSSecurityTokenService.class);
+        Mockito.when(mockSts.getCallerIdentity(Mockito.any(GetCallerIdentityRequest.class))).thenReturn(new GetCallerIdentityResult().withUserId("TEST_USER_ID").withAccount("TEST_ACCOUNT").withArn("TEST_ARN"));
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder) {
+            AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
+                return mockSts;
+            }
+        };
+
+        assertTrue(provider.getShouldDebugCreds());
+
+        AWSCredentials credentials = provider.getCredentials();
+        assertTrue(credentials instanceof BasicSessionCredentials);
+        BasicSessionCredentials sessionCredentials = (BasicSessionCredentials) credentials;
+        assertEquals(ACCESS_KEY_VALUE, sessionCredentials.getAWSAccessKeyId());
+        assertEquals(SECRET_KEY_VALUE, sessionCredentials.getAWSSecretKey());
+        assertEquals(SESSION_TOKEN, sessionCredentials.getSessionToken());
+
+        provider.close();
+        Mockito.verify(mockStsRoleProvider, times(1)).close();
+        Mockito.verify(mockSts, times(1)).getCallerIdentity(any(GetCallerIdentityRequest.class));
     }
 
     @Test
@@ -190,6 +241,7 @@ public class MSKCredentialProviderTest {
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
 
         AWSCredentials credentials = provider.getCredentials();
         assertTrue(credentials instanceof BasicSessionCredentials);
@@ -224,6 +276,7 @@ public class MSKCredentialProviderTest {
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
 
         AWSCredentials credentials = provider.getCredentials();
         assertTrue(credentials instanceof BasicSessionCredentials);
@@ -260,6 +313,7 @@ public class MSKCredentialProviderTest {
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
 
         AWSCredentials credentials = provider.getCredentials();
         provider.close();
