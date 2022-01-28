@@ -59,8 +59,8 @@ dependencies {
             'org.apache.commons:commons-lang3:3.11',
             'org.mockito:mockito-inline:3.6.0')
     testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0',
-            'org.apache.logging.log4j:log4j-core:2.13.1',
-            'org.apache.logging.log4j:log4j-slf4j-impl:2.13.1')
+            'org.apache.logging.log4j:log4j-core:2.17.1',
+            'org.apache.logging.log4j:log4j-slf4j-impl:2.17.1')
 }
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
