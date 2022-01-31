@@ -431,6 +431,12 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+
+### Release 1.1.2
+
+- Update log4j version in test dependencies to CVE-2021-44832
+- Allow users to debug the credentials being used
+
 ### Release 1.1.1
 * Enable support for STS regional endpoints when configured to assume a role (thanks dvuple@)
 * Additional logging to log the classes and classloaders for `IAMClientCallbackHandler` and `AWSCredentialsCallback
