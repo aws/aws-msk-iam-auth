@@ -20,7 +20,7 @@ import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import software.amazon.msk.auth.iam.internals.AWSCredentialsCallback;
 import software.amazon.msk.auth.iam.internals.MSKCredentialProvider;
 import lombok.NonNull;
-import org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
+import kafkashaded.org.apache.kafka.common.security.auth.AuthenticateCallbackHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

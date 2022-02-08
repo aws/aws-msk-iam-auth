@@ -40,6 +40,7 @@ group "software.amazon.msk"
 
 dependencies {
     compileOnly('org.apache.kafka:kafka-clients:2.4.1')
+    compileOnly(files('libs/----workspace_spark_3_2--vendor--org.apache.kafka__kafka-clients__2.8.0_shaded-for-kafka-0-10-hive-2.3__hadoop-3.2.jar'))
     // aws sdk imports.
     implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.986'))
     implementation('com.amazonaws:aws-java-sdk-core')

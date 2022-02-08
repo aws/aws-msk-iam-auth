@@ -19,7 +19,7 @@ import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
 import software.amazon.msk.auth.iam.IAMLoginModule;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
-import org.apache.kafka.common.errors.IllegalSaslStateException;
+import kafkashaded.org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
