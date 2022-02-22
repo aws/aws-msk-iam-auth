@@ -209,6 +209,42 @@ public class MSKCredentialProviderTest {
     }
 
     @Test
+    public void testEc2CredsWithDebuCredsNoAccessToSts_Succeed() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_DEBUG_CREDS_NAME, "true");
+
+
+        EC2ContainerCredentialsProviderWrapper mockEc2CredsProvider = Mockito.mock(EC2ContainerCredentialsProviderWrapper.class);
+        Mockito.when(mockEc2CredsProvider.getCredentials())
+                .thenReturn(new BasicAWSCredentials(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO));
+
+        AWSSecurityTokenService mockSts = Mockito.mock(AWSSecurityTokenService.class);
+        Mockito.when(mockSts.getCallerIdentity(Mockito.any(GetCallerIdentityRequest.class)))
+                .thenThrow(new SdkClientException("TEST TEST"));
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AWSCredentialsProviderChain getDefaultProvider() {
+                return new AWSCredentialsProviderChain(mockEc2CredsProvider);
+            }
+
+            AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
+                return mockSts;
+            }
+        };
+        assertTrue(provider.getShouldDebugCreds());
+
+        AWSCredentials credentials = provider.getCredentials();
+
+        validateBasicCredentialsTwo(credentials);
+
+        provider.close();
+        Mockito.verify(mockSts, times(1)).getCallerIdentity(Mockito.any());
+        Mockito.verify(mockEc2CredsProvider, times(1)).getCredentials();
+        Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
+    }
+
+
+    @Test
     public void testAwsRoleArnAndSessionName() {
         STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
                 .mock(STSAssumeRoleSessionCredentialsProvider.class);

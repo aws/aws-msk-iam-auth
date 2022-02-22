@@ -162,9 +162,16 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     }
 
     private void logCallerIdentity(AWSCredentials credentials) {
-        AWSSecurityTokenService stsClient = getStsClientForDebuggingCreds(credentials);
-        GetCallerIdentityResult response = stsClient.getCallerIdentity(new GetCallerIdentityRequest());
-        log.debug("The identity of the credentials is {}", response.toString());
+        try {
+            AWSSecurityTokenService stsClient = getStsClientForDebuggingCreds(credentials);
+            GetCallerIdentityResult response = stsClient.getCallerIdentity(new GetCallerIdentityRequest());
+            log.debug("The identity of the credentials is {}", response.toString());
+        } catch (Exception e) {
+            //If we run into an exception logging the caller identity, we should log the exception but
+            //continue running.
+            log.warn("Error identifying caller identity. If this is not transient, does this application have"
+                    + "access to AWS STS?", e);
+        }
     }
 
     AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
