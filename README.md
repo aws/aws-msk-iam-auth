@@ -132,6 +132,22 @@ The Default Credential Provider Chain must contain the permissions necessary to 
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
  
+### Retries while getting credentials
+In some scenarios the IAM credentials might be transiently unavailable. This will cause the connection to fail, which
+might in some cases cause the client application to stop. 
+So, in version `1.1.3` the library retries loading the credentials when it gets an `SkdClientException` (which wraps
+most `AWS SDK` exceptions). Since the retries do not impact the fault-free path and we had heard of user issues around
+random failures loading credentials (e.g.: #59, maybe #51), we decided to change the default behavior to retry a
+mamximum of    `3` times. It exponentially backs off with full jitter upto a max-delay of `2000 ms`.
+   
+The maximum number of retries and the maximum back off period can be set:
+```
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsMaxRetries="7" awsMaxBackOffTimeMs="500";
+```
+This sets the maximum number of retries to `7` and the maximum back off time to `500 ms`.
+
+The retries can be turned off completely by setting `awsMaxRetries` to `"0"`.
+ 
 ## Troubleshooting
 
 ### Finding out which identity is being used
@@ -185,6 +201,12 @@ It can happen when the `aws-msk-iam-auth` library is placed on the plugin path f
 library is actually used by the Kafka producer and consumer clients and not the Kafka Connect plugin itself, 
 it should be placed in a location that is on the classpath but outside the plugin path. This should ensure that Kafka
  Connect's `PluginClassLoader` is not used to load classes for the `aws-msk-iam-auth` library.
+
+### Dependency mismatch
+If you are building the library from source using `gradle build` and copying it over to a Kafka client on that or
+ another machine, there is a chance that some dependencies may not be available on the Kafka client machine. In that
+  case, you could instead generate and use the uber jar that packages all the necessary runtime dependencies by 
+  running `gradle shadowJar`.
 
 ## Details
 This library introduces a new SASL mechanism called `AWS_MSK_IAM`. The `IAMLoginModule` is used to register the
