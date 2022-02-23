@@ -398,6 +398,29 @@ public class MSKCredentialProviderTest {
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
+    @Test
+    public void testEc2CredsWithOnrRetriableErrorsCustomZeroRetry_ThrowsException() {
+        int numExceptions = 1;
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put("awsMaxRetries", "0");
+
+        AWSCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AWSCredentialsProviderChain getDefaultProvider() {
+                return new AWSCredentialsProviderChain(mockEc2CredsProvider);
+            }
+        };
+        assertFalse(provider.getShouldDebugCreds());
+
+        assertThrows(SdkClientException.class, () -> provider.getCredentials());
+
+        Mockito.verify(mockEc2CredsProvider, times(numExceptions)).getCredentials();
+        Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
+    }
+
+
+
 
     private void testEc2CredsWithRetriableErrorsCustomRetry(int numExceptions) {
         Map<String, String> optionsMap = new HashMap<>();

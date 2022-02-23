@@ -26,6 +26,7 @@ import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.retry.PredefinedBackoffStrategies;
+import com.amazonaws.retry.PredefinedRetryPolicies;
 import com.amazonaws.retry.v2.AndRetryCondition;
 import com.amazonaws.retry.v2.MaxNumberOfRetriesCondition;
 import com.amazonaws.retry.v2.RetryOnExceptionsCondition;
@@ -74,6 +75,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_MAX_BACK_OFF_TIME_MS = "awsMaxBackOffTimeMs";
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 2000;
+    private static final int BASE_DELAY = 200;
 
     private final List<AutoCloseable> closeableProviders;
     private final AWSCredentialsProvider compositeDelegate;
@@ -103,10 +105,15 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 .collect(Collectors.toList());
         this.shouldDebugCreds = shouldDebugCreds;
         this.stsRegion = stsRegion;
-        this.retryPolicy = new SimpleRetryPolicy(
-                new AndRetryCondition(new RetryOnExceptionsCondition(Collections.singletonList(
-                        SdkClientException.class)), new MaxNumberOfRetriesCondition(maxRetries)),
-                new PredefinedBackoffStrategies.FullJitterBackoffStrategy(200, maxBackOffTimeMs));
+        if (maxRetries > 0) {
+            this.retryPolicy = new SimpleRetryPolicy(
+                    new AndRetryCondition(new RetryOnExceptionsCondition(Collections.singletonList(
+                            SdkClientException.class)), new MaxNumberOfRetriesCondition(maxRetries)),
+                    new PredefinedBackoffStrategies.FullJitterBackoffStrategy(BASE_DELAY, maxBackOffTimeMs));
+        } else {
+            this.retryPolicy = new SimpleRetryPolicy((c) -> false,
+                    new PredefinedBackoffStrategies.FullJitterBackoffStrategy(BASE_DELAY, maxBackOffTimeMs));
+        }
     }
 
     //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
