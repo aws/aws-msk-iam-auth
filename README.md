@@ -136,9 +136,10 @@ For example, if the client is an EC2 instance, its instance profile should have 
 In some scenarios the IAM credentials might be transiently unavailable. This will cause the connection to fail, which
 might in some cases cause the client application to stop. 
 So, in version `1.1.3` the library retries loading the credentials when it gets an `SkdClientException` (which wraps
-most `AWS SDK` exceptions). Since the retries do not impact the fault-free path and we had heard of user issues around
-random failures loading credentials (e.g.: #59, maybe #51), we decided to change the default behavior to retry a
-mamximum of    `3` times. It exponentially backs off with full jitter upto a max-delay of `2000 ms`.
+most `AWS SDK` client side exceptions). Since the retries do not impact the fault-free path and we had heard of user
+issues around random failures loading credentials (e.g.: https://github.com/aws/aws-msk-iam-auth/issues/59, maybe
+ https://github.com/aws/aws-msk-iam-auth/issues/51 ), we decided to change the default behavior
+  to retry a maximum of `3` times. It exponentially backs off with full jitter upto a max-delay of `2000 ms`.
    
 The maximum number of retries and the maximum back off period can be set:
 ```
