@@ -150,6 +150,20 @@ The retries can be turned off completely by setting `awsMaxRetries` to `"0"`.
  
 ## Troubleshooting
 
+### IAMClientCallbackHandler could not be found
+
+A Kafka client configured to use `AWS_MSK_IAM` may see an error that the `IAMClientCallbackHandler` cannot be found:
+
+```
+Exception in thread "main" org.apache.kafka.common.config.ConfigException: Invalid value 
+software.amazon.msk.auth.iam.IAMClientCallbackHandler for configuration sasl.client.callback.handler.class: 
+Class software.amazon.msk.auth.iam.IAMClientCallbackHandler could not be found.
+```
+
+That means that this `aws-msk-iam-auth` library is not on the classpath of the Kafka client. Please add the `aws-msk-iam-auth` library 
+to the classpath and try again.
+
+
 ### Finding out which identity is being used
 
 You may receive an `Access denied` error and there may be some doubt as to which credential is being exactly used. The 
