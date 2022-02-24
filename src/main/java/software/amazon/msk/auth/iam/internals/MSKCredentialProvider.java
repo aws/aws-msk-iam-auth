@@ -141,9 +141,12 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             while (shouldTry) {
                 try {
                     AWSCredentials credentials = compositeDelegate.getCredentials();
+                    if (credentials == null) {
+                        throw new SdkClientException("Composite delegate returned empty credentials.");
+                    }
                     return credentials;
                 } catch (SdkBaseException se) {
-                    log.warn("Exception loading credentials. Retry Attempts: {} Exception: {}",
+                    log.warn("Exception loading credentials. Retry Attempts: {}",
                             retryPolicyContext.retriesAttempted(), se);
                     retryPolicyContext = createRetryPolicyContext(se, retryPolicyContext.retriesAttempted());
                     shouldTry = retryPolicy.shouldRetry(retryPolicyContext);
@@ -156,7 +159,9 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                     }
                 }
             }
-            return null;
+            throw new SdkClientException(
+                    "loadCredentialsWithRetry in unexpected location " + retryPolicyContext.totalRequests(),
+                    retryPolicyContext.exception());
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             throw new RuntimeException("Interrupted while waiting for credentials.", ie);
