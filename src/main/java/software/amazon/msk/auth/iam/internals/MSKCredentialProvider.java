@@ -74,8 +74,8 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
     private static final String AWS_MAX_BACK_OFF_TIME_MS = "awsMaxBackOffTimeMs";
     private static final int DEFAULT_MAX_RETRIES = 3;
-    private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 2000;
-    private static final int BASE_DELAY = 200;
+    private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
+    private static final int BASE_DELAY = 500;
 
     private final List<AutoCloseable> closeableProviders;
     private final AWSCredentialsProvider compositeDelegate;
