@@ -26,7 +26,6 @@ import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.retry.PredefinedBackoffStrategies;
-import com.amazonaws.retry.PredefinedRetryPolicies;
 import com.amazonaws.retry.v2.AndRetryCondition;
 import com.amazonaws.retry.v2.MaxNumberOfRetriesCondition;
 import com.amazonaws.retry.v2.RetryOnExceptionsCondition;
@@ -50,7 +49,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import static com.amazonaws.util.ValidationUtils.assertNotNull;
 
 /**
  * This AWS Credential Provider is used to load up AWS Credentials based on options provided on the Jaas config line.
@@ -58,9 +56,13 @@ import static com.amazonaws.util.ValidationUtils.assertNotNull;
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
- * 2. A particular AWS IAM Role and optional AWS IAM role session name:
- *     awsRoleArn={IAM Role ARN}, awsRoleSessionName = {session name}
- * 3. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
+ * 2. A particular AWS IAM Role and optionally AWS IAM role session name and AWS region for the STS endpoint:
+ *     awsRoleArn={IAM Role ARN}, awsRoleSessionName={session name}, awsStsRegion={region name}
+ * 3. Optional arguments to configure retries when we fail to load credentials:
+ *     awsMaxRetries={Maximum number of retries}, awsMaxBackOffTimeMs={Maximum back off time between retries in ms}
+ * 4. Optional argument to help debug credentials used to establish connections:
+ *     awsDebugCreds={true|false}
+ * 5. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
