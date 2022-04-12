@@ -20,7 +20,20 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.stream.Collectors;
 
 public class ProducerClientTest {
     private static final String SASL_IAM_JAAS_CONFIG_VALUE = "software.amazon.msk.auth.iam.IAMLoginModule required awsProfileName=\"dadada bbbb\";";
@@ -39,5 +52,48 @@ public class ProducerClientTest {
                 .put("sasl.client.callback.handler.class", "software.amazon.msk.auth.iam.IAMClientCallbackHandler");
         KafkaProducer<String, String> producer = new KafkaProducer<String, String>(producerProperties);
         producer.send(new ProducerRecord<>("test", "keys", "values"));
+    }
+
+    static Set<String> getClassNamesFromJarFile(File givenFile) throws IOException {
+        Set<String> classNames = new HashSet<>();
+        try (JarFile jarFile = new JarFile(givenFile)) {
+            Enumeration<JarEntry> e = jarFile.entries();
+            while (e.hasMoreElements()) {
+                JarEntry jarEntry = e.nextElement();
+                if (jarEntry.getName().endsWith(".class")) {
+                    String className = jarEntry.getName()
+                            .replace("/", ".")
+                            .replace(".class", "");
+                    classNames.add(className);
+                }
+            }
+            return classNames;
+        }
+    }
+
+    static Set<Class> getClassesFromJarFile(File jarFile) throws IOException, ClassNotFoundException {
+        Set<String> classNames = getClassNamesFromJarFile(jarFile);
+        Set<Class> classes = new HashSet<>(classNames.size());
+        try (URLClassLoader cl = URLClassLoader.newInstance(
+                new URL[] { new URL("jar:file:" + jarFile + "!/") })) {
+            for (String name : classNames) {
+                if (name.contains("amazon.msk.auth.iam")) {
+                    try {
+                        Class clazz = cl.loadClass(name); // Load the class by its name
+                        classes.add(clazz);
+                    } catch (Throwable ce) {
+                        System.out.println(ce);
+                    }
+                }
+            }
+        }
+        return classes;
+    }
+
+    @Test
+    public void testParent() throws IOException, ClassNotFoundException {
+        Set<Class> classes = getClassesFromJarFile(new File("/Volumes/workplace/github/aws-msk-iam-auth/aws-msk-iam-auth/aws-msk-iam-auth-relocated-source-kafka.jar"));
+        classes.stream().filter(c->c.getInterfaces().length > 0).map(c -> c.getName()+" "+c.getCanonicalName()+" ["+
+                Arrays.stream(c.getInterfaces()).map(i -> i.getCanonicalName()).collect(Collectors.joining())+" ] ").forEach(System.out::println);
     }
 }

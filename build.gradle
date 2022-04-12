@@ -69,6 +69,8 @@ shadowJar {
     //We remove org.slf4j from the configuration as it gets included transitively by multiple dependencies and just
     //removing it from the configuration being shadowed is not sufficient.
     configurations = [project.configurations.runtimeClasspath.exclude([group: "org.slf4j", module: "slf4j-api"])]
+    relocate 'software.amazon.msk.auth.iam', 'kafkashaded.software.amazon.msk.auth.iam'
+    relocate 'org.apache.kafka', 'kafkashaded.org.apache.kafka'
 }
 
 
