@@ -124,10 +124,10 @@ The `awsRoleSessionName` is optional.
  
  `awsStsRegion` optionally specifies the regional endpoint of AWS STS to use 
 while assuming the IAM role. If `awsStsRegion` is omitted the global endpoint for AWS STS is used by default. 
-When the Kafka client is running in a VPC with an [STS interface VPC Endpoint](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_sts_vpce.html) [(AWS PrivateLink)](https://aws.amazon.com/privatelink/?privatelink-blogs.sort-by=item.additionalFields.createdDate&privatelink-blogs.sort-order=desc) to a regional endpoint of AWS STS and we want
+When the Kafka client is running in a VPC with an [STS interface VPC Endpoint][StsVpcE] [(AWS PrivateLink)][PrivateLink] to a regional endpoint of AWS STS and we want
  all STS traffic to go over that endpoint, we should set `awsStsRegion` to the region corresponding to the interface
  VPC Endpoint. It may also be necessary to configure the `sts_regional_endpoints` shared AWS config file setting, or 
- the AWS_STS_REGIONAL_ENDPOINTS environment variable as per the [AWS STS Regionalized endpoints documentation.](https://docs.aws.amazon.com/sdkref/latest/guide/feature-sts-regionalized-endpoints.html)
+ the AWS_STS_REGIONAL_ENDPOINTS environment variable as per the [AWS STS Regionalized endpoints documentation.][StsRegionalEndpointsDoc]
  
 The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
@@ -509,3 +509,6 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 [AwsSDK]: https://github.com/aws/aws-sdk-java
 [RoleProfileCLI]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-role.html
 [MSKLimits]: https://docs.aws.amazon.com/msk/latest/developerguide/limits.html
+[StsVpcE]: https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_sts_vpce.html
+[PrivateLink]: https://aws.amazon.com/privatelink/?privatelink-blogs.sort-by=item.additionalFields.createdDate&privatelink-blogs.sort-order=desc
+[StsRegionalEndpointsDoc]: https://docs.aws.amazon.com/sdkref/latest/guide/feature-sts-regionalized-endpoints.html
