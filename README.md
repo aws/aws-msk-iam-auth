@@ -32,6 +32,13 @@ An uber jar containing the library and all its relocated dependencies except the
 The generated uber jar file can also be found at: `build/libs/`. At runtime, the uber jar expects to find the kafka
  client library and the `sl4j-api` library on the classpath. 
 
+## Validating secure dependencies
+To ensure no security vulnerabilities in the dependency libraries, run the following.
+
+ `gradle dependencyCheckAnalyze`
+
+If the above reports any vulnerabilities, upgrade dependencies to use the respective latest versions.
+
 ## Using the Amazon MSK Library for IAM Authentication
 The recommended way to use this library is to consume it from maven central while building a Kafka client application.
 
@@ -468,6 +475,17 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+
+### Release 1.1.4
+
+- Update dependencies to address the following security vulnerabilities.
+  * CVE-2021-37136
+  * CVE-2021-37137
+  * CVE-2022-24823
+  * CVE-2021-43797
+  * CVE-2021-38153
+  * CVE-2020-36518
+- Specifically, build and test against Kafka 2.8.
 
 ### Release 1.1.3
 
