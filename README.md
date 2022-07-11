@@ -139,6 +139,10 @@ The Default Credential Provider Chain must contain the permissions necessary to 
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
  
+### Figuring out whether or not to use default credentials
+
+When you want the MSK client to connect to MSK using credentials not found in the [AWS Default Credentials Provider Chain][DefaultCreds], you can specify an `awsProfileName` containing the credential profile to use, or an `awsRoleArn` to indicate an IAM Role’s ARN to assume using credentials in the Default Credential Provider Chain.  These parameters are optional, and if they are not set the MSK client will use credentials from the Default Credential Provider Chain. There is no need to specify them if you intend to use an IAM role associated with an AWS compute service, such as EC2 or ECS to authenticate to MSK.
+
 ### Retries while getting credentials
 In some scenarios the IAM credentials might be transiently unavailable. This will cause the connection to fail, which
 might in some cases cause the client application to stop. 
