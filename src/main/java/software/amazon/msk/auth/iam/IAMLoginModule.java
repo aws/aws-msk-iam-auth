@@ -15,6 +15,7 @@
 */
 package software.amazon.msk.auth.iam;
 
+import software.amazon.msk.auth.iam.internals.ClassLoaderAwareIAMSaslClientProvider;
 import software.amazon.msk.auth.iam.internals.IAMSaslClientProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +36,7 @@ public class IAMLoginModule implements LoginModule {
     private static final Logger log = LoggerFactory.getLogger(IAMLoginModule.class);
 
     static {
+        ClassLoaderAwareIAMSaslClientProvider.initialize();
         IAMSaslClientProvider.initialize();
     }
 

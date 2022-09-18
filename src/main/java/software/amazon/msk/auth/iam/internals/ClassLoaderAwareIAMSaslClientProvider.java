@@ -15,26 +15,22 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import software.amazon.msk.auth.iam.internals.IAMSaslClient.IAMSaslClientFactory;
+import software.amazon.msk.auth.iam.IAMLoginModule;
+import software.amazon.msk.auth.iam.internals.IAMSaslClient.ClassLoaderAwareIAMSaslClientFactory;
 
 import java.security.Provider;
 import java.security.Security;
 
-import static software.amazon.msk.auth.iam.internals.IAMSaslClient.getMechanismNameForClassLoader;
-
-public class IAMSaslClientProvider extends Provider {
+public class ClassLoaderAwareIAMSaslClientProvider extends Provider {
     /**
-     * Constructs a IAM Sasl Client provider with a fixed name, version number,
-     * and information.
+     * Constructs an IAM Sasl Client provider that installs a {@link ClassLoaderAwareIAMSaslClientFactory}.
      */
-    protected IAMSaslClientProvider() {
-        super("SASL/IAM Client Provider (" +
-                IAMSaslClientProvider.class.getClassLoader().hashCode(), 1.0,
-                ") SASL/IAM Client Provider for Kafka");
-        put("SaslClientFactory." + getMechanismNameForClassLoader(getClass().getClassLoader()), IAMSaslClientFactory.class.getName());
+    protected ClassLoaderAwareIAMSaslClientProvider() {
+        super("ClassLoader Aware SASL/IAM Client Provider", 1.0, "SASL/IAM Client Provider for Kafka");
+        put("SaslClientFactory." + IAMLoginModule.MECHANISM, ClassLoaderAwareIAMSaslClientFactory.class.getName());
     }
 
     public static void initialize() {
-        Security.addProvider(new IAMSaslClientProvider());
+        Security.addProvider(new ClassLoaderAwareIAMSaslClientProvider());
     }
 }

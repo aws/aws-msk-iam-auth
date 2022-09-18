@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.sasl.Sasl;
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslClientFactory;
 import javax.security.sasl.SaslException;
@@ -203,7 +204,8 @@ public class IAMSaslClient implements SaslClient {
         return true;
     }
 
-    public static class IAMSaslClientFactory implements SaslClientFactory {
+    public static class ClassLoaderAwareIAMSaslClientFactory implements SaslClientFactory {
+
         @Override
         public SaslClient createSaslClient(String[] mechanisms,
                 String authorizationId,
@@ -211,14 +213,12 @@ public class IAMSaslClient implements SaslClient {
                 String serverName,
                 Map<String, ?> props,
                 CallbackHandler cbh) throws SaslException {
-            for (String mechanism : mechanisms) {
-                if (IAMLoginModule.MECHANISM.equals(mechanism)) {
-                    return new IAMSaslClient(mechanism, cbh, serverName, new AWS4SignedPayloadGenerator());
-                }
-            }
-            throw new SaslException(
-                    "Requested mechanisms " + Arrays.asList(mechanisms) + " not supported. The supported" +
-                            "mechanism is " + IAMLoginModule.MECHANISM);
+            String mechanismName = getMechanismNameForClassLoader(cbh.getClass().getClassLoader());
+
+            // Create a client by delegating to the SaslClientFactory for the classloader of the CallbackHandler
+            return Sasl.createSaslClient(
+                    new String[] { mechanismName },
+                    authorizationId, protocol, serverName, props, cbh);
         }
 
         @Override
@@ -227,4 +227,35 @@ public class IAMSaslClient implements SaslClient {
         }
     }
 
+    public static class IAMSaslClientFactory implements SaslClientFactory {
+
+        @Override
+        public SaslClient createSaslClient(String[] mechanisms,
+                String authorizationId,
+                String protocol,
+                String serverName,
+                Map<String, ?> props,
+                CallbackHandler cbh) throws SaslException {
+            String mechanismName = getMechanismNameForClassLoader(getClass().getClassLoader());
+
+            for (String mechanism : mechanisms) {
+                if (mechanismName.equals(mechanism)) {
+                    return new IAMSaslClient(mechanism, cbh, serverName, new AWS4SignedPayloadGenerator());
+                }
+            }
+
+            throw new SaslException(
+                    "Requested mechanisms " + Arrays.asList(mechanisms) + " not supported. " +
+                            "The supported mechanism is " + mechanismName);
+        }
+
+        @Override
+        public String[] getMechanismNames(Map<String, ?> props) {
+            return new String[] { getMechanismNameForClassLoader(getClass().getClassLoader()) };
+        }
+    }
+
+    public static String getMechanismNameForClassLoader(ClassLoader classLoader) {
+        return IAMLoginModule.MECHANISM + "." + classLoader.hashCode();
+    }
 }
