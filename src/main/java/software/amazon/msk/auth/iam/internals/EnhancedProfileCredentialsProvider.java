@@ -4,6 +4,7 @@ import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.BasicSessionCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.profiles.ProfileFile;
@@ -32,6 +33,13 @@ public class EnhancedProfileCredentialsProvider implements AWSCredentialsProvide
     @Override
     public AWSCredentials getCredentials() {
         software.amazon.awssdk.auth.credentials.AwsCredentials credentialsV2 = delegate.resolveCredentials();
+        return getAwsCredentialsV1(credentialsV2);
+    }
+
+    private static AWSCredentials getAwsCredentialsV1(AwsCredentials credentialsV2) {
+        if (credentialsV2 == null) {
+            return null;
+        }
         if (credentialsV2 instanceof AwsSessionCredentials) {
             AwsSessionCredentials sessionCredentialsV2 = (AwsSessionCredentials) credentialsV2;
             return new BasicSessionCredentials(sessionCredentialsV2.accessKeyId(),
