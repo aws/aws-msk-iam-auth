@@ -135,6 +135,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         try {
             while (shouldTry) {
                 try {
+                    //TODO: catch exceptions thrown by the AWS SDK v2
                     AwsCredentials credentials = compositeDelegate.resolveCredentials();
                     if (credentials == null) {
                         throw new SdkClientException("Composite delegate returned empty credentials.");
