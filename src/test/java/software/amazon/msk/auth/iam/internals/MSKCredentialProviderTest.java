@@ -303,9 +303,9 @@ public class MSKCredentialProviderTest {
         optionsMap.put(AWS_PROFILE_NAME, "test_profile");
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            EnhancedProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String profileName) {
+            ProfileCredentialsProvider createProfileCredentialsProvider(String profileName) {
                 assertEquals(TEST_PROFILE_NAME, profileName);
-                return new EnhancedProfileCredentialsProvider(profileFile, TEST_PROFILE_NAME);
+                return getProfileCredentialsProvider(profileName, profileFile);
             }
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion) {
@@ -324,6 +324,10 @@ public class MSKCredentialProviderTest {
         assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
         Mockito.verify(mockStsRoleProvider, times(0)).resolveCredentials();
         Mockito.verify(mockStsRoleProvider, times(1)).close();
+    }
+
+    private static ProfileCredentialsProvider getProfileCredentialsProvider(String profileName, ProfileFile profileFile) {
+        return ProfileCredentialsProvider.builder().profileName(profileName).profileFile(profileFile).build();
     }
 
     @Test

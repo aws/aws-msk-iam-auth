@@ -17,7 +17,7 @@ package software.amazon.msk.auth.iam.internals;
 
 public final class SystemPropertyCredentialsUtils {
     private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
-    private static final String SECRET_KEY_PROPERTY = "aws.secretKey";
+    private static final String SECRET_KEY_PROPERTY = "aws.secretAccessKey";
     private static final String AWS_PROFILE_SYSTEM_PROPERTY = "aws.profile";
 
     private SystemPropertyCredentialsUtils() {
