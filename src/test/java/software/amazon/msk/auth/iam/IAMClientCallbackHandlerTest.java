@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.UnsupportedCallbackException;
+import javax.security.auth.login.AppConfigurationEntry;
 import java.io.IOException;
 import java.util.Collections;
 
@@ -35,7 +36,10 @@ public class IAMClientCallbackHandlerTest {
     @Test
     public void testDefaultCredentials() throws IOException, UnsupportedCallbackException {
         IAMClientCallbackHandler clientCallbackHandler = new IAMClientCallbackHandler();
-        clientCallbackHandler.configure(Collections.emptyMap(), "AWS_MSK_IAM", Collections.emptyList());
+        AppConfigurationEntry jaasConfigEntry = new AppConfigurationEntry("software.amazon.msk.auth.iam.IAMLoginModule",
+                AppConfigurationEntry.LoginModuleControlFlag.REQUIRED, Collections.emptyMap());
+        clientCallbackHandler.configure(Collections.emptyMap(), "AWS_MSK_IAM",
+                Collections.singletonList(jaasConfigEntry));
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
             AWSCredentialsCallback callback = new AWSCredentialsCallback();
             try {
