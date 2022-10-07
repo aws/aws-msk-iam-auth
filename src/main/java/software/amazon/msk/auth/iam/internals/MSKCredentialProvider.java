@@ -38,7 +38,6 @@ import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -118,7 +117,6 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         }
     }
 
-    //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
     protected AwsCredentialsProvider getDefaultProvider() {
         return DefaultCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build();
     }

@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import javax.security.auth.login.AppConfigurationEntry;
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslException;
 import java.io.IOException;
@@ -97,7 +98,9 @@ public class IAMSaslClientTest {
 
     private IAMClientCallbackHandler getIamClientCallbackHandler() {
         IAMClientCallbackHandler cbh = new IAMClientCallbackHandler();
-        cbh.configure(Collections.EMPTY_MAP, AWS_MSK_IAM, Collections.emptyList());
+        AppConfigurationEntry jaasConfigEntry = new AppConfigurationEntry("software.amazon.msk.auth.iam.IAMLoginModule",
+                AppConfigurationEntry.LoginModuleControlFlag.REQUIRED, Collections.emptyMap());
+        cbh.configure(Collections.EMPTY_MAP, AWS_MSK_IAM, Collections.singletonList(jaasConfigEntry));
         return cbh;
     }
 
