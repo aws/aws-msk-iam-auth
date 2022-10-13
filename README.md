@@ -363,7 +363,7 @@ From the canonical string, we derive the string that will be used to sign the au
 The String to Sign is calculated as:
 ```
 "AWS4-HMAC-SHA256" + "\n" +
-"<timestamp in yyyyMMdd format>" + "\n" +
+"<timestamp in yyyyMMddTHHmmssZ format>" + "\n" +
 <Scope> + "\n" +
 Hex(SHA256Hash(<CanonicalRequest>))
 ```
@@ -371,8 +371,8 @@ where
 * `Hex` is a function to do lowercase base 16 encoding.
 * `SHA256Hash` is a Secure Hash Algorithm (SHA) cryptographic hash function.
 
-The `<Scope>` is defined as the AWS region of the Kafka broker and the name of the service ("kafka-cluster" in this
- case). For example if the broker is in `us-west-2` region, the scope is `"us-west-2/kafka-cluster"`. It must be the same scope
+The `<Scope>` is defined as the timestamp in yyyyMMdd format, the AWS region of the Kafka broker, the name of the service ("kafka-cluster" in this
+ case), and the constant string "aws4_request". For example if the broker is in `us-west-2` region, the scope is `"<timestamp in yyyyMMdd format>/us-west-2/kafka-cluster/aws4_request"`. It must be the same scope
 as was defined for the `"X-Amz-Credential"` query parameter while generating the [canonical query string](#canonical-query-string).
 
 ### Calculate Signature
