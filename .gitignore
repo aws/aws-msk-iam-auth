@@ -1,5 +1,5 @@
 .gradle
 bin
-internals
 build
 lombok.config
+out/

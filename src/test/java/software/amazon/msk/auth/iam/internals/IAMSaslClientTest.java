@@ -16,13 +16,16 @@
 package software.amazon.msk.auth.iam.internals;
 
 import com.amazonaws.auth.BasicAWSCredentials;
+import org.junit.jupiter.api.BeforeEach;
 import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.junit.jupiter.api.Test;
+import software.amazon.msk.auth.iam.internals.IAMSaslClient.ClassLoaderAwareIAMSaslClientFactory;
 
+import static java.util.Collections.emptyMap;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -47,14 +50,19 @@ public class IAMSaslClientTest {
 
     private static final BasicAWSCredentials BASIC_AWS_CREDENTIALS = new BasicAWSCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
 
+    @BeforeEach
+    public void setUp() {
+        IAMSaslClientProvider.initialize();
+    }
+
     @Test
-    public void testCompleteValidExchange() throws IOException, ParseException {
+    public void testCompleteValidExchange() throws IOException {
         IAMSaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
         runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
     private void runValidExchangeForSaslClient(IAMSaslClient saslClient, String accessKey, String secretKey) {
-        assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
+        assertEquals(getMechanismName(), saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
             try {
@@ -97,7 +105,7 @@ public class IAMSaslClientTest {
 
     private IAMClientCallbackHandler getIamClientCallbackHandler() {
         IAMClientCallbackHandler cbh = new IAMClientCallbackHandler();
-        cbh.configure(Collections.EMPTY_MAP, AWS_MSK_IAM, Collections.emptyList());
+        cbh.configure(emptyMap(), AWS_MSK_IAM, Collections.emptyList());
         return cbh;
     }
 
@@ -127,11 +135,11 @@ public class IAMSaslClientTest {
     @Test
     public void testInvalidServerResponse() throws SaslException {
         SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
-        assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
+        assertEquals(getMechanismName(), saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
             try {
-                byte[] response = saslClient.evaluateChallenge(new byte[]{});
+                saslClient.evaluateChallenge(new byte[]{});
             } catch (SaslException e) {
                 throw new RuntimeException("Test failed", e);
             }
@@ -149,7 +157,7 @@ public class IAMSaslClientTest {
         SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
             try {
-                byte[] response = saslClient.evaluateChallenge(new byte[]{});
+                saslClient.evaluateChallenge(new byte[]{});
             } catch (SaslException e) {
                 throw new RuntimeException("Test failed", e);
             }
@@ -174,11 +182,11 @@ public class IAMSaslClientTest {
     @Test
     public void testEmptyServerResponse() throws SaslException {
         SaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
-        assertEquals(AWS_MSK_IAM, saslClient.getMechanismName());
+        assertEquals(getMechanismName(), saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
             try {
-                byte[] response = saslClient.evaluateChallenge(new byte[]{});
+                saslClient.evaluateChallenge(new byte[]{});
             } catch (SaslException e) {
                 throw new RuntimeException("Test failed", e);
             }
@@ -191,8 +199,8 @@ public class IAMSaslClientTest {
 
     @Test
     public void testFactoryMechanisms() {
-        assertArrayEquals(new String[]{AWS_MSK_IAM},
-                new IAMSaslClient.IAMSaslClientFactory().getMechanismNames(Collections.emptyMap()));
+        assertArrayEquals(new String[] { getMechanismName() },
+                new IAMSaslClient.IAMSaslClientFactory().getMechanismNames(emptyMap()));
     }
 
     @Test
@@ -200,8 +208,14 @@ public class IAMSaslClientTest {
 
         assertThrows(SaslException.class, () -> new IAMSaslClient.IAMSaslClientFactory()
                 .createSaslClient(new String[]{AWS_MSK_IAM + "BAD"}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
-                        Collections.emptyMap(),
+                        emptyMap(),
                         new SuccessfulIAMCallbackHandler(BASIC_AWS_CREDENTIALS)));
+    }
+
+    @Test
+    public void testClassLoaderAwareIAMSaslClientFactoryMechanisms() {
+        assertArrayEquals(new String[] { AWS_MSK_IAM },
+                new ClassLoaderAwareIAMSaslClientFactory().getMechanismNames(emptyMap()));
     }
 
     private static class SuccessfulIAMCallbackHandler extends IAMClientCallbackHandler {
@@ -240,10 +254,14 @@ public class IAMSaslClientTest {
     }
 
     private IAMSaslClient getIAMClient(Supplier<IAMClientCallbackHandler> handlerSupplier) throws SaslException {
-        return (IAMSaslClient )new IAMSaslClient.IAMSaslClientFactory()
-                .createSaslClient(new String[]{AWS_MSK_IAM}, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
-                        Collections.emptyMap(),
+        return (IAMSaslClient) new IAMSaslClient.ClassLoaderAwareIAMSaslClientFactory()
+                .createSaslClient(new String[] { AWS_MSK_IAM }, "AUTH_ID", "PROTOCOL", VALID_HOSTNAME,
+                        emptyMap(),
                         handlerSupplier.get());
+    }
+
+    private String getMechanismName() {
+        return AWS_MSK_IAM + "." + getClass().getClassLoader().hashCode();
     }
 
 }
