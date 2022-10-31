@@ -477,14 +477,8 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
       } 
 }
 ```
-
+   
 ## Release Notes
-
-### Release 1.1.5
-
-* Update dependencies to address the following security vulnerabilities.
-  * CVE-2022-42003
-  * CVE-2022-42004
 
 ### Release 1.1.4
 
