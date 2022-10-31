@@ -482,6 +482,9 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 
 ### Release 1.1.5
 
+- Update dependencies to address the following security vulnerabilities.
+  * CVE-2022-42003
+  * CVE-2022-42004
 - Add support for multi-classloader environments, such as Apache Flink ([#36](https://github.com/aws/aws-msk-iam-auth/issues/36))
 
 ### Release 1.1.4
