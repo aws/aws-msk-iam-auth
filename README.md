@@ -147,7 +147,7 @@ When you want the MSK client to connect to MSK using credentials not found in th
 ### Retries while getting credentials
 In some scenarios the IAM credentials might be transiently unavailable. This will cause the connection to fail, which
 might in some cases cause the client application to stop. 
-So, in version `1.1.3` the library retries loading the credentials when it gets an `SkdClientException` (which wraps
+So, in version `1.1.3` the library retries loading the credentials when it gets an `SdkClientException` (which wraps
 most `AWS SDK` client side exceptions). Since the retries do not impact the fault-free path and we had heard of user
 issues around random failures loading credentials (e.g.: [#59](https://github.com/aws/aws-msk-iam-auth/issues/59), maybe
  [#51](https://github.com/aws/aws-msk-iam-auth/issues/51) ), we decided to change the default behavior
