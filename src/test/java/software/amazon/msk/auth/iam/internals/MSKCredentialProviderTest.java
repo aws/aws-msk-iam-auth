@@ -64,8 +64,8 @@ public class MSKCredentialProviderTest {
     private static final String TEST_ROLE_SESSION_NAME = "TEST_ROLE_SESSION_NAME";
     private static final String SESSION_TOKEN = "SESSION_TOKEN";
     private static final String AWS_ROLE_ARN = "awsRoleArn";
-    private static final String AWS_ACCESS_KEY_ID = "awsAccessKeyId";
-    private static final String AWS_SECRET_ACCESS_KEY = "awsSecretAccessKey";
+    private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
+    private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_PROFILE_NAME = "awsProfileName";
     private static final String AWS_DEBUG_CREDS_NAME = "awsDebugCreds";
 
@@ -187,8 +187,8 @@ public class MSKCredentialProviderTest {
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
-        optionsMap.put(AWS_ACCESS_KEY_ID, ACCESS_KEY_VALUE_TWO);
-        optionsMap.put(AWS_SECRET_ACCESS_KEY, SECRET_KEY_VALUE_TWO);
+        optionsMap.put(AWS_ROLE_ACCESS_KEY_ID, ACCESS_KEY_VALUE_TWO);
+        optionsMap.put(AWS_ROLE_SECRET_ACCESS_KEY, SECRET_KEY_VALUE_TWO);
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = getProviderBuilderWithCredentials(mockStsRoleProvider, optionsMap,
                 "aws-msk-iam-auth");
