@@ -41,10 +41,10 @@ group "software.amazon.msk"
 dependencies {
     compileOnly('org.apache.kafka:kafka-clients:2.8.1')
     // aws sdk imports.
-    implementation(platform('com.amazonaws:aws-java-sdk-bom:1.11.986'))
+    implementation(platform('com.amazonaws:aws-java-sdk-bom:1.12.395'))
     implementation('com.amazonaws:aws-java-sdk-core')
     implementation('com.amazonaws:aws-java-sdk-sts')
-    implementation(platform('software.amazon.awssdk:bom:2.17.192'))
+    implementation(platform('software.amazon.awssdk:bom:2.19.26'))
     implementation('software.amazon.awssdk:auth')
     implementation('software.amazon.awssdk:sso')
     implementation('software.amazon.awssdk:sts')
