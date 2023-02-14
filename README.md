@@ -160,6 +160,27 @@ sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsMaxRetr
 This sets the maximum number of retries to `7` and the maximum back off time to `500 ms`.
 
 The retries can be turned off completely by setting `awsMaxRetries` to `"0"`.
+
+
+## Setting EKS Service Account
+ 
+If your Kafka Client, Producer or Consumer, is running on EKS, you can use EKS service accounts to distribute IAM credentials. The [EKS service account documentation](https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html) is a good place to start. Following steps cover the scenario of cross account IAM access with EKS service account. Our set-up uses VPC peering for cross account network access, and managed EC2 node group on EKS side. Each step below is linked to AWS documentation for more details and troubleshooting:
+1. Create two AWS accounts one for MSK cluster, let's say it has AWS accountId 'A', and one for EKS cluster, let's say it has AWS accountId 'B'.
+2. [Create VPCs](https://docs.aws.amazon.com/directoryservice/latest/admin-guide/gsg_create_vpc.html) in Account 'A' and Account 'B' with different CIDR blocks. 
+3. [Set-up VPC Peering](https://docs.aws.amazon.com/vpc/latest/peering/create-vpc-peering-connection.html) between the two VPCs that were created in the step 1.
+4. [Create a new MSK cluster](https://docs.aws.amazon.com/msk/latest/developerguide/create-cluster.html) in the account A with IAM auth enabled.
+5. [Create a new EKS cluster](https://docs.aws.amazon.com/eks/latest/userguide/create-cluster.html) in the account B with `--with-oidc` [flag](https://docs.aws.amazon.com/eks/latest/userguide/enable-iam-roles-for-service-accounts.html) to use AWS Identity and Access Management (IAM) roles for service accounts.
+6. [Update security groups](https://docs.aws.amazon.com/quicksight/latest/user/vpc-security-groups.html) for MSK and EKS clusters to allow traffic from each other's CIDR.
+7. [Create an IAM role](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_cross-account-with-roles.html) in the account 'A' which delegates accesss to account 'B'. Attach MSK cluster access policy to this role.
+8. [Create an IAM role](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_cross-account-with-roles.html) in the account 'B' which assumes the role delegated from the account 'A'.
+9. Create a new namespace in the EKS cluster and [create a new service account](https://docs.aws.amazon.com/eks/latest/userguide/associate-service-account-role.html) in that namespace with role created in the step 8.
+10. All apps created under this namespace with the service account from the step 9 will have MSK cluster access. 
+
+With console access to your EKS containers, as in the [EKS example](https://docs.aws.amazon.com/eks/latest/userguide/sample-deployment.html). You can connect, and download the [latest version of Kafka](https://kafka.apache.org/downloads) on the container. It comes with the [kafka CLI](https://kafka.apache.org/quickstart), that you can use for validation. As an example, you can [set-up your config file](#configuring-a-kafka-client-to-use-aws-iam) and use the following command to test topic creation with IAM auth. 
+
+```
+./kafka-topics.sh --bootstrap-server <borker-name>:9098 --create --topic test-topic --partitions 1 --replication-factor 3   --command-config <config_file>
+```
  
 ## Troubleshooting
 
