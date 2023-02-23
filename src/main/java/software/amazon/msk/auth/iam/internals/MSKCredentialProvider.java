@@ -58,8 +58,8 @@ import java.util.stream.Collectors;
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
- * 2. A particular AWS IAM Role, with optional access key id an secret key, and optionally AWS IAM role session name
- *    and AWS region for the STS endpoint:
+ * 2. A particular AWS IAM Role, with optional access key id and secret key OR optional external id,
+ *    and optionally AWS IAM role session name and AWS region for the STS endpoint:
  *     awsRoleArn={IAM Role ARN}, awsRoleAccessKeyId={access key id}, awsSecretAccessKey={secret access key},
  *     awsRoleSessionName={session name}, awsStsRegion={region name}
  * 3. Optional arguments to configure retries when we fail to load credentials:
@@ -74,6 +74,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
     private static final String AWS_PROFILE_NAME_KEY = "awsProfileName";
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
+    private static final String AWS_ROLE_EXTERNAL_ID = "awsRoleExternalId";
     private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
@@ -288,9 +289,13 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
                 String accessKey = (String) optionsMap.getOrDefault(AWS_ROLE_ACCESS_KEY_ID, null);
                 String secretKey = (String) optionsMap.getOrDefault(AWS_ROLE_SECRET_ACCESS_KEY, null);
+                String externalId = (String) optionsMap.getOrDefault(AWS_ROLE_EXTERNAL_ID, null);
                 if (accessKey != null && secretKey != null) {
                     AWSCredentialsProvider credentials = new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey));
                     return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials);
+                }
+                else if (externalId != null) {
+                    return createSTSRoleCredentialProvider((String) p, externalId, sessionName, stsRegion);
                 }
 
                 return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion);
@@ -317,6 +322,20 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
             return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
                     .withStsClient(stsClient)
+                    .build();
+        }
+
+        STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+                                                                                String externalId,
+                                                                                String sessionName,
+                                                                                String stsRegion) {
+            AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
+                    .withRegion(stsRegion)
+                    .build();
+
+            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
+                    .withStsClient(stsClient)
+                    .withExternalId(externalId)
                     .build();
         }
     }
