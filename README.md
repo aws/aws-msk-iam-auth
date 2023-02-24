@@ -502,6 +502,11 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
    
 ## Release Notes
 
+### Release 1.1.6
+- Update dependencies to address the following security vulnerability
+  * CVE-2022-41915
+- Add support for explicit access key and secret in `sasl.jaas.config`
+
 ### Release 1.1.5
 
 - Update dependencies to address the following security vulnerabilities.
