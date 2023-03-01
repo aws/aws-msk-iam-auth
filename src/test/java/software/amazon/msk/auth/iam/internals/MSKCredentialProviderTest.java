@@ -61,9 +61,11 @@ public class MSKCredentialProviderTest {
     private static final String PROFILE_ACCESS_KEY_VALUE = "PROFILE_ACCESS_KEY";
     private static final String PROFILE_SECRET_KEY_VALUE = "PROFILE_SECRET_KEY";
     private static final String TEST_ROLE_ARN = "TEST_ROLE_ARN";
+    private static final String TEST_ROLE_EXTERNAL_ID = "TEST_EXTERNAL_ID";
     private static final String TEST_ROLE_SESSION_NAME = "TEST_ROLE_SESSION_NAME";
     private static final String SESSION_TOKEN = "SESSION_TOKEN";
     private static final String AWS_ROLE_ARN = "awsRoleArn";
+    private static final String AWS_ROLE_EXTERNAL_ID = "awsRoleExternalId";
     private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_PROFILE_NAME = "awsProfileName";
@@ -309,6 +311,41 @@ public class MSKCredentialProviderTest {
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
+                assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
+                assertEquals("eu-west-1", stsRegion);
+                return mockStsRoleProvider;
+            }
+        };
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
+
+        AWSCredentials credentials = provider.getCredentials();
+        validateBasicSessionCredentials(credentials);
+
+        provider.close();
+        Mockito.verify(mockStsRoleProvider, times(1)).close();
+    }
+
+    @Test
+    public void testAwsRoleArnSessionNameStsRegionAndExternalId() {
+        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(STSAssumeRoleSessionCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.getCredentials())
+                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+        optionsMap.put(AWS_ROLE_EXTERNAL_ID, TEST_ROLE_EXTERNAL_ID);
+        optionsMap.put("awsRoleSessionName", TEST_ROLE_SESSION_NAME);
+        optionsMap.put("awsStsRegion", "eu-west-1");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
+            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+                                                                                    String externalId,
+                                                                                    String sessionName,
+                                                                                    String stsRegion) {
+                assertEquals(TEST_ROLE_ARN, roleArn);
+                assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
                 return mockStsRoleProvider;
