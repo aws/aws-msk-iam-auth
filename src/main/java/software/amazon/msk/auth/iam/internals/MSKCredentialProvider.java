@@ -59,10 +59,10 @@ import java.util.stream.Collectors;
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
- * 2. A particular AWS IAM Role, with optional access key id and secret key OR optional external id,
+ * 2. A particular AWS IAM Role, with optional access key id, secret key and session token OR optional external id,
  *    and optionally AWS IAM role session name and AWS region for the STS endpoint:
- *     awsRoleArn={IAM Role ARN}, awsRoleAccessKeyId={access key id}, awsSecretAccessKey={secret access key},
- *     awsRoleSessionName={session name}, awsStsRegion={region name}
+ *     awsRoleArn={IAM Role ARN}, awsRoleAccessKeyId={access key id}, awsRoleSecretAccessKey={secret access key},
+ *     awsRoleSessionToken={session token}, awsRoleSessionName={session name}, awsStsRegion={region name}
  * 3. Optional arguments to configure retries when we fail to load credentials:
  *     awsMaxRetries={Maximum number of retries}, awsMaxBackOffTimeMs={Maximum back off time between retries in ms}
  * 4. Optional argument to help debug credentials used to establish connections:
