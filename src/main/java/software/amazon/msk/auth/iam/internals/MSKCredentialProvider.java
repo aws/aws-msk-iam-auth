@@ -22,6 +22,7 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
 import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
@@ -78,6 +79,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
+    private static final String AWS_ROLE_SESSION_TOKEN = "awsRoleSessionToken";
     private static final String AWS_STS_REGION = "awsStsRegion";
     private static final String AWS_DEBUG_CREDS_KEY = "awsDebugCreds";
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
@@ -250,7 +252,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         }
 
         public String getStsRegion() {
-            return Optional.ofNullable((String)optionsMap.get(AWS_STS_REGION))
+            return Optional.ofNullable((String) optionsMap.get(AWS_STS_REGION))
                     .orElse("aws-global");
         }
 
@@ -289,9 +291,14 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
                 String accessKey = (String) optionsMap.getOrDefault(AWS_ROLE_ACCESS_KEY_ID, null);
                 String secretKey = (String) optionsMap.getOrDefault(AWS_ROLE_SECRET_ACCESS_KEY, null);
+                String sessionToken = (String) optionsMap.getOrDefault(AWS_ROLE_SESSION_TOKEN, null);
                 String externalId = (String) optionsMap.getOrDefault(AWS_ROLE_EXTERNAL_ID, null);
                 if (accessKey != null && secretKey != null) {
-                    AWSCredentialsProvider credentials = new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey));
+                    AWSCredentialsProvider credentials = new AWSStaticCredentialsProvider(
+                            sessionToken != null
+                                    ? new BasicSessionCredentials(accessKey, secretKey, sessionToken)
+                                    : new BasicAWSCredentials(accessKey, secretKey));
+
                     return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials);
                 }
                 else if (externalId != null) {
