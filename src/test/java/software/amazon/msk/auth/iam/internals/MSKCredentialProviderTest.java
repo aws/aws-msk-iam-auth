@@ -237,7 +237,7 @@ public class MSKCredentialProviderTest {
     }
 
     @Test
-    public void testEc2CredsWithDebuCredsNoAccessToSts_Succeed() {
+    public void testEc2CredsWithDebugCredsNoAccessToSts_Succeed() {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_DEBUG_CREDS_NAME, "true");
 
@@ -270,7 +270,6 @@ public class MSKCredentialProviderTest {
         Mockito.verify(mockEc2CredsProvider, times(1)).getCredentials();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
-
 
     @Test
     public void testAwsRoleArnAndSessionName() {
@@ -377,6 +376,7 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_PROFILE_NAME, profileName);
                 return new EnhancedProfileCredentialsProvider(profileFile, TEST_PROFILE_NAME);
             }
+
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
@@ -482,9 +482,6 @@ public class MSKCredentialProviderTest {
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
-
-
-
     private void testEc2CredsWithRetriableErrorsCustomRetry(int numExceptions) {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "5");
@@ -580,7 +577,6 @@ public class MSKCredentialProviderTest {
         assertEquals(SECRET_KEY_VALUE_TWO, credentials.getAWSSecretKey());
     }
 
-
     private STSAssumeRoleSessionCredentialsProvider setupMockStsRoleCredentialsProviderWithRetriableExceptions(int numErrors) {
         SdkBaseException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
 
@@ -607,7 +603,6 @@ public class MSKCredentialProviderTest {
                 .thenReturn(new BasicAWSCredentials(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO));
         return mockEc2Provider;
     }
-
 
     private ProfileFile getProfileFile() {
         return ProfileFile.builder().content(new File(getProfileResourceURL().getFile()).toPath()).type(

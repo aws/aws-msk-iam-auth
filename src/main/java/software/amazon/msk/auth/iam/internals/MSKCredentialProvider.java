@@ -22,6 +22,7 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
 import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
@@ -58,10 +59,10 @@ import java.util.stream.Collectors;
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
- * 2. A particular AWS IAM Role, with optional access key id and secret key OR optional external id,
+ * 2. A particular AWS IAM Role, with optional access key id, secret key and session token OR optional external id,
  *    and optionally AWS IAM role session name and AWS region for the STS endpoint:
- *     awsRoleArn={IAM Role ARN}, awsRoleAccessKeyId={access key id}, awsSecretAccessKey={secret access key},
- *     awsRoleSessionName={session name}, awsStsRegion={region name}
+ *     awsRoleArn={IAM Role ARN}, awsRoleAccessKeyId={access key id}, awsRoleSecretAccessKey={secret access key},
+ *     awsRoleSessionToken={session token}, awsRoleSessionName={session name}, awsStsRegion={region name}
  * 3. Optional arguments to configure retries when we fail to load credentials:
  *     awsMaxRetries={Maximum number of retries}, awsMaxBackOffTimeMs={Maximum back off time between retries in ms}
  * 4. Optional argument to help debug credentials used to establish connections:
@@ -78,6 +79,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
+    private static final String AWS_ROLE_SESSION_TOKEN = "awsRoleSessionToken";
     private static final String AWS_STS_REGION = "awsStsRegion";
     private static final String AWS_DEBUG_CREDS_KEY = "awsDebugCreds";
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
@@ -250,7 +252,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         }
 
         public String getStsRegion() {
-            return Optional.ofNullable((String)optionsMap.get(AWS_STS_REGION))
+            return Optional.ofNullable((String) optionsMap.get(AWS_STS_REGION))
                     .orElse("aws-global");
         }
 
@@ -289,9 +291,14 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
                 String accessKey = (String) optionsMap.getOrDefault(AWS_ROLE_ACCESS_KEY_ID, null);
                 String secretKey = (String) optionsMap.getOrDefault(AWS_ROLE_SECRET_ACCESS_KEY, null);
+                String sessionToken = (String) optionsMap.getOrDefault(AWS_ROLE_SESSION_TOKEN, null);
                 String externalId = (String) optionsMap.getOrDefault(AWS_ROLE_EXTERNAL_ID, null);
                 if (accessKey != null && secretKey != null) {
-                    AWSCredentialsProvider credentials = new AWSStaticCredentialsProvider(new BasicAWSCredentials(accessKey, secretKey));
+                    AWSCredentialsProvider credentials = new AWSStaticCredentialsProvider(
+                            sessionToken != null
+                                    ? new BasicSessionCredentials(accessKey, secretKey, sessionToken)
+                                    : new BasicAWSCredentials(accessKey, secretKey));
+
                     return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials);
                 }
                 else if (externalId != null) {
