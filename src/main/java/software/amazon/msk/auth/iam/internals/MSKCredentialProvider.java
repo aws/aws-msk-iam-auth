@@ -28,6 +28,8 @@ import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
+import com.amazonaws.client.builder.AwsClientBuilder;
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.retry.PredefinedBackoffStrategies;
 import com.amazonaws.retry.v2.AndRetryCondition;
 import com.amazonaws.retry.v2.MaxNumberOfRetriesCondition;
@@ -267,6 +269,22 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
         }
 
+        public EndpointConfiguration buildEndpointConfiguration(String stsRegion){
+            //An AWSSecurityTokenService with a regional endpoint configuration
+            EndpointConfiguration endpointConfiguration =
+                    new AwsClientBuilder.EndpointConfiguration(
+                            String.format("sts.%s.amazonaws.com", stsRegion),
+                            stsRegion);
+            //An AWSSecurityTokenService with a global endpoint configuration
+            if (stsRegion.equals("aws-global")) {
+                endpointConfiguration =
+                        new EndpointConfiguration(
+                                "sts.amazonaws.com",
+                                stsRegion);
+            }
+            return endpointConfiguration;
+        }
+
         private Optional<EnhancedProfileCredentialsProvider> getProfileProvider() {
             return Optional.ofNullable(optionsMap.get(AWS_PROFILE_NAME_KEY)).map(p -> {
                 if (log.isDebugEnabled()) {
@@ -311,8 +329,9 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
         STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                 String sessionName, String stsRegion) {
+            EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
             AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
+                    .withEndpointConfiguration(endpointConfiguration)
                     .build();
             return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
                     .withStsClient(stsClient)
@@ -322,8 +341,9 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                 String sessionName, String stsRegion,
                                                                                 AWSCredentialsProvider credentials) {
+            EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
             AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
+                    .withEndpointConfiguration(endpointConfiguration)
                     .withCredentials(credentials)
                     .build();
 
@@ -336,8 +356,10 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                                                                                 String externalId,
                                                                                 String sessionName,
                                                                                 String stsRegion) {
+
+            EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
             AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
+                    .withEndpointConfiguration(endpointConfiguration)
                     .build();
 
             return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
