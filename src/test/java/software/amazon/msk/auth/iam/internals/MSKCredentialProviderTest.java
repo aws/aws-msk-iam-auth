@@ -23,6 +23,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import com.amazonaws.client.builder.AwsClientBuilder;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -312,6 +314,9 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.getServiceEndpoint());
+
                 return mockStsRoleProvider;
             }
         };
@@ -347,6 +352,9 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.getServiceEndpoint());
+
                 return mockStsRoleProvider;
             }
         };
@@ -381,6 +389,8 @@ public class MSKCredentialProviderTest {
                                                                                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals("aws-msk-iam-auth", sessionName);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.amazonaws.com", endpointConfiguration.getServiceEndpoint());
                 return mockStsRoleProvider;
             }
         };
@@ -537,6 +547,8 @@ public class MSKCredentialProviderTest {
                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.amazonaws.com", endpointConfiguration.getServiceEndpoint());
                 return mockStsRoleProvider;
             }
         };
@@ -550,6 +562,8 @@ public class MSKCredentialProviderTest {
                     AWSCredentialsProvider credentials) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.amazonaws.com", endpointConfiguration.getServiceEndpoint());
                 return mockStsRoleProvider;
             }
         };
