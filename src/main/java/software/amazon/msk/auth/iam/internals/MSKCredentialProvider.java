@@ -28,7 +28,6 @@ import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
-import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.retry.PredefinedBackoffStrategies;
 import com.amazonaws.retry.v2.AndRetryCondition;
@@ -272,7 +271,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         public EndpointConfiguration buildEndpointConfiguration(String stsRegion){
             //An AWSSecurityTokenService with a regional endpoint configuration
             EndpointConfiguration endpointConfiguration =
-                    new AwsClientBuilder.EndpointConfiguration(
+                    new EndpointConfiguration(
                             String.format("sts.%s.amazonaws.com", stsRegion),
                             stsRegion);
             //An AWSSecurityTokenService with a global endpoint configuration
