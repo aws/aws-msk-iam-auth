@@ -46,7 +46,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>1.1.6</version>
+      <version>1.1.7</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -501,6 +501,10 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+
+### Release 1.1.7
+- Add support to pass session credentials to an STS role credential provider
+- Add support for external id for role-based authentication
 
 ### Release 1.1.6
 - Update dependencies to address the following security vulnerability
