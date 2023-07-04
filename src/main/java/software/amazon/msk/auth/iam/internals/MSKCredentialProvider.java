@@ -108,10 +108,10 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     }
 
     MSKCredentialProvider(List<AWSCredentialsProvider> providers,
-                          Boolean shouldDebugCreds,
-                          String stsRegion,
-                          int maxRetries,
-                          int maxBackOffTimeMs) {
+            Boolean shouldDebugCreds,
+            String stsRegion,
+            int maxRetries,
+            int maxBackOffTimeMs) {
         List<AWSCredentialsProvider> delegateList = new ArrayList<>(providers);
         delegateList.add(getDefaultProvider());
         compositeDelegate = new AWSCredentialsProviderChain(delegateList);
@@ -202,19 +202,19 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
     AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
         return AWSSecurityTokenServiceClientBuilder.standard()
-                .withRegion(stsRegion)
-                .withCredentials(new AWSCredentialsProvider() {
-                    @Override
-                    public AWSCredentials getCredentials() {
-                        return credentials;
-                    }
+            .withRegion(stsRegion)
+            .withCredentials(new AWSCredentialsProvider() {
+                @Override
+                public AWSCredentials getCredentials() {
+                    return credentials;
+                }
 
-                    @Override
-                    public void refresh() {
+                @Override
+                public void refresh() {
 
-                    }
-                })
-                .build();
+                }
+            })
+            .build();
     }
 
     @Override
