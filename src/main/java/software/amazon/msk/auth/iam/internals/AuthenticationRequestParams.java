@@ -57,9 +57,14 @@ class AuthenticationRequestParams {
 
     public static AuthenticationRequestParams create(@NonNull String host,
             AWSCredentials credentials,
-            @NonNull String userAgent) throws IllegalArgumentException {
-        Region region = Optional.ofNullable(regionMetadata.tryGetRegionByEndpointDnsSuffix(host))
-                .orElseGet(() -> Regions.getCurrentRegion());
+            @NonNull String userAgent, String awsRegion) throws IllegalArgumentException {
+        Region region;
+        if(awsRegion != null) { // override region if specified
+            region = Region.getRegion(Regions.fromName(awsRegion));
+        } else {
+            region = Optional.ofNullable(regionMetadata.tryGetRegionByEndpointDnsSuffix(host))
+                    .orElseGet(() -> Regions.getCurrentRegion());
+        }
         if (region == null) {
             throw new IllegalArgumentException("Host " + host + " does not belong to a valid region.");
         }

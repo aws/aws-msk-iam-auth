@@ -75,6 +75,7 @@ import java.util.stream.Collectors;
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
 public class MSKCredentialProvider implements AWSCredentialsProvider, AutoCloseable {
+    public static final String AWS_REGION = "awsRegion";
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
     private static final String AWS_PROFILE_NAME_KEY = "awsProfileName";
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";

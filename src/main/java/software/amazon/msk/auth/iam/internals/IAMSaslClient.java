@@ -141,7 +141,8 @@ public class IAMSaslClient implements SaslClient {
             //Generate the signed payload
             final byte[] response = payloadGenerator.signedPayload(
                     AuthenticationRequestParams
-                            .create(serverName, callback.getAwsCredentials(), UserAgentUtils.getUserAgentValue()));
+                            .create(serverName, callback.getAwsCredentials(), UserAgentUtils.getUserAgentValue(),
+                                    callback.getAwsRegion()));
             //transition to the state waiting to receive server response.
             setState(State.RECEIVE_SERVER_RESPONSE);
             return response;
@@ -237,6 +238,8 @@ public class IAMSaslClient implements SaslClient {
                 Map<String, ?> props,
                 CallbackHandler cbh) throws SaslException {
             String mechanismName = getMechanismNameForClassLoader(getClass().getClassLoader());
+
+            System.out.println(props);
 
             for (String mechanism : mechanisms) {
                 if (mechanismName.equals(mechanism)) {

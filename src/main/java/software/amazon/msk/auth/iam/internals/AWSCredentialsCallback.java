@@ -33,10 +33,16 @@ public class AWSCredentialsCallback implements Callback {
     private AWSCredentials awsCredentials = null;
     @Getter
     private Exception loadingException = null;
+    @Getter
+    private String awsRegion = null;
 
     public void setAwsCredentials(@NonNull AWSCredentials awsCredentials) {
         this.awsCredentials = awsCredentials;
         this.loadingException = null;
+    }
+
+    public void setAWSRegion(String awsRegion) {
+        this.awsRegion = awsRegion;
     }
 
     public void setLoadingException(@NonNull Exception loadingException) {

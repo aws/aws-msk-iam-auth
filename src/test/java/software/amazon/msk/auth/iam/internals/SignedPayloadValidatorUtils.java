@@ -82,6 +82,7 @@ public final class SignedPayloadValidatorUtils {
         String[] credentialArray = credential.split("/");
         assertEquals(5, credentialArray.length);
         assertEquals(params.getAwsCredentials().getAWSAccessKeyId(), credentialArray[0]);
+        assertEquals(params.getRegion().getName(), credentialArray[2]);
         String userAgent = propertyMap.get("user-agent");
         assertNotNull(userAgent);
         assertTrue(userAgent.startsWith("aws-msk-iam-auth"));

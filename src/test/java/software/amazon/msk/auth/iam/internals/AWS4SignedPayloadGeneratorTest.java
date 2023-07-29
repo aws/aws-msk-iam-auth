@@ -27,6 +27,7 @@ import java.text.ParseException;
 
 public class AWS4SignedPayloadGeneratorTest {
     private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
+    private static final String HOST_REGION = "us-west-2";
     private static final String ACCESS_KEY = "ACCESS_KEY";
     private static final String SECRET_KEY = "SECRET_KEY";
     private static final String USER_AGENT = "USER_AGENT";
@@ -41,7 +42,7 @@ public class AWS4SignedPayloadGeneratorTest {
     @Test
     public void testSigning() throws IOException, ParseException {
         AuthenticationRequestParams params = AuthenticationRequestParams
-                .create(VALID_HOSTNAME, credentials, UserAgentUtils.getUserAgentValue());
+                .create(VALID_HOSTNAME, credentials, UserAgentUtils.getUserAgentValue(), HOST_REGION);
         AWS4SignedPayloadGenerator generator = new AWS4SignedPayloadGenerator();
         byte[] signedPayload = generator.signedPayload(params);
 

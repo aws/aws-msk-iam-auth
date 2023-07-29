@@ -42,9 +42,22 @@ public class AuthenticateRequestParamsTest {
     }
 
     @Test
-    public void testAllProperties() {
+    public void testSpecifiedRegion() {
         AuthenticationRequestParams params = AuthenticationRequestParams
-                .create(VALID_HOSTNAME, credentials, USER_AGENT);
+                .create(VALID_HOSTNAME, credentials, USER_AGENT, "us-east-2");
+
+        assertEquals("us-east-2", params.getRegion().getName());
+        assertEquals("kafka-cluster", params.getServiceScope());
+        assertEquals(USER_AGENT, params.getUserAgent());
+        assertEquals(VALID_HOSTNAME, params.getHost());
+        assertEquals(ACCESS_KEY, params.getAwsCredentials().getAWSAccessKeyId());
+        assertEquals(SECRET_KEY, params.getAwsCredentials().getAWSSecretKey());
+    }
+
+    @Test
+    public void testUnspecifiedRegion() {
+        AuthenticationRequestParams params = AuthenticationRequestParams
+                .create(VALID_HOSTNAME, credentials, USER_AGENT, null);
 
         assertEquals("us-west-2", params.getRegion().getName());
         assertEquals("kafka-cluster", params.getServiceScope());
@@ -59,7 +72,7 @@ public class AuthenticateRequestParamsTest {
         try (MockedStatic<Regions> regionsMockedStatic = Mockito.mockStatic(Regions.class)) {
             regionsMockedStatic.when(Regions::getCurrentRegion).thenReturn(null);
             assertThrows(IllegalArgumentException.class,
-                    () -> AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT));
+                    () -> AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT, null));
         }
     }
 
@@ -67,7 +80,7 @@ public class AuthenticateRequestParamsTest {
     public void testInvalidHostInEC2() {
         try (MockedStatic<Regions> regionsMockedStatic = Mockito.mockStatic(Regions.class)) {
             regionsMockedStatic.when(Regions::getCurrentRegion).thenReturn(TEST_EC2_REGION);
-            AuthenticationRequestParams params = AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT);
+            AuthenticationRequestParams params = AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT, null);
             assertEquals(TEST_EC2_REGION, params.getRegion());
         }
     }

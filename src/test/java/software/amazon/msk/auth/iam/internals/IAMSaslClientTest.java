@@ -32,11 +32,14 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import javax.security.auth.login.AppConfigurationEntry;
 import javax.security.sasl.SaslClient;
 import javax.security.sasl.SaslException;
 import java.io.IOException;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.function.Supplier;
 
 public class IAMSaslClientTest {
@@ -58,10 +61,24 @@ public class IAMSaslClientTest {
     @Test
     public void testCompleteValidExchange() throws IOException {
         IAMSaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
-        runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+        runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE, null);
     }
 
-    private void runValidExchangeForSaslClient(IAMSaslClient saslClient, String accessKey, String secretKey) {
+    @Test
+    public void testCompleteValidExchangeWithRegion() throws IOException {
+        // test if the region is correctly overridden by the awsRegion jaasConfig
+        IAMClientCallbackHandler cbh = new IAMClientCallbackHandler();
+        cbh.configure(emptyMap(), AWS_MSK_IAM, new ArrayList<AppConfigurationEntry>() {{
+            add(new AppConfigurationEntry("software.amazon.msk.auth.iam.IAMLoginModule",
+                    AppConfigurationEntry.LoginModuleControlFlag.REQUIRED, new HashMap<String, String>() {{
+                        put("awsRegion", "us-east-2");
+            }}));
+        }});
+        IAMSaslClient saslClient = getSuccessfulIAMClient(cbh);
+        runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE, "us-east-2");
+    }
+
+    private void runValidExchangeForSaslClient(IAMSaslClient saslClient, String accessKey, String secretKey, String awsRegion) {
         assertEquals(getMechanismName(), saslClient.getMechanismName());
         assertTrue(saslClient.hasInitialResponse());
         SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
@@ -72,7 +89,7 @@ public class IAMSaslClientTest {
                         .validatePayload(response,
                                 AuthenticationRequestParams
                                         .create(VALID_HOSTNAME, new BasicAWSCredentials(accessKey, secretKey),
-                                                UserAgentUtils.getUserAgentValue()));
+                                                UserAgentUtils.getUserAgentValue(), awsRegion));
                 assertFalse(saslClient.isComplete());
 
                 String requestId = RandomStringUtils.randomAlphabetic(10);
@@ -96,11 +113,11 @@ public class IAMSaslClientTest {
 
         //test the first Sasl client with 1 set of credentials.
         IAMSaslClient saslClient1 = getSuccessfulIAMClient(cbh);
-        runValidExchangeForSaslClient(saslClient1, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+        runValidExchangeForSaslClient(saslClient1, ACCESS_KEY_VALUE, SECRET_KEY_VALUE, null);
 
         //test second sasl client with another set of credentials
         IAMSaslClient saslClient2 = getSuccessfulIAMClient(cbh);
-        runValidExchangeForSaslClient(saslClient2, ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO);
+        runValidExchangeForSaslClient(saslClient2, ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO, null);
     }
 
     private IAMClientCallbackHandler getIamClientCallbackHandler() {

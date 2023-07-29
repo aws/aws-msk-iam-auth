@@ -41,6 +41,7 @@ import java.util.Optional;
 public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
     private AWSCredentialsProvider provider;
+    private String awsRegion;
 
     @Override
     public void configure(Map<String, ?> configs,
@@ -53,6 +54,8 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
                 .filter(j -> IAMLoginModule.class.getCanonicalName().equals(j.getLoginModuleName())).findFirst();
         provider = configEntry.map(c -> (AWSCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
                 .orElse(DefaultAWSCredentialsProviderChain.getInstance());
+        awsRegion = configEntry.map(c -> (String) c.getOptions().getOrDefault(MSKCredentialProvider.AWS_REGION, null))
+                .orElse(null);
     }
 
     @Override
@@ -98,6 +101,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         try {
             provider.refresh();
             callback.setAwsCredentials(provider.getCredentials());
+            callback.setAWSRegion(awsRegion);
         } catch (Exception e) {
             callback.setLoadingException(e);
         }
