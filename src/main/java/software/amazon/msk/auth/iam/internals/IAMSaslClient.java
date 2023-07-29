@@ -239,8 +239,6 @@ public class IAMSaslClient implements SaslClient {
                 CallbackHandler cbh) throws SaslException {
             String mechanismName = getMechanismNameForClassLoader(getClass().getClassLoader());
 
-            System.out.println(props);
-
             for (String mechanism : mechanisms) {
                 if (mechanismName.equals(mechanism)) {
                     return new IAMSaslClient(mechanism, cbh, serverName, new AWS4SignedPayloadGenerator());
