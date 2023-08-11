@@ -39,6 +39,8 @@ class AuthenticationRequestParams {
     private static final String VERSION_1 = "2020_10_22";
     private static final String SERVICE_SCOPE = "kafka-cluster";
     private static RegionMetadata regionMetadata = new RegionMetadata(new PartitionsLoader().build());
+    /* we are not using the RegionMetadataFactory.create() method here as one of its path
+    relies on the LegacyRegionXmlMetadataBuilder which does not implement tryGetRegionByEndpointDnsSuffix */
 
     @NonNull
     private final String version;
