@@ -18,7 +18,7 @@ package software.amazon.msk.auth.iam.internals;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionMetadata;
-import com.amazonaws.regions.RegionMetadataFactory;
+import com.amazonaws.partitions.PartitionsLoader;
 import com.amazonaws.regions.Regions;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -38,7 +38,7 @@ import java.util.Optional;
 class AuthenticationRequestParams {
     private static final String VERSION_1 = "2020_10_22";
     private static final String SERVICE_SCOPE = "kafka-cluster";
-    private static RegionMetadata regionMetadata = RegionMetadataFactory.create();
+    private static RegionMetadata regionMetadata = new RegionMetadata(new PartitionsLoader().build());
 
     @NonNull
     private final String version;
