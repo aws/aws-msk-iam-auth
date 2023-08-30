@@ -74,6 +74,8 @@ import java.util.stream.Collectors;
 public class MSKCredentialProvider implements AWSCredentialsProvider, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
     private static final String AWS_PROFILE_NAME_KEY = "awsProfileName";
+    private static final String AWS_ACCESS_KEY_ID = "awsAccessKeyId";
+    private static final String AWS_SECRET_ACCESS_KEY = "awsSecretAccessKey";
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
     private static final String AWS_ROLE_EXTERNAL_ID = "awsRoleExternalId";
     private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
@@ -129,7 +131,8 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
     //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
     protected AWSCredentialsProviderChain getDefaultProvider() {
-        return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider(),
+        return new AWSCredentialsProviderChain(
+                new EnvironmentVariableCredentialsProvider(),
                 new SystemPropertiesCredentialsProvider(),
                 WebIdentityTokenCredentialsProvider.create(),
                 new EnhancedProfileCredentialsProvider(),
@@ -242,6 +245,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
         public List<AWSCredentialsProvider> getProviders() {
             List<AWSCredentialsProvider> providers = new ArrayList<>();
+            getAwsBasicCredentialProvider().ifPresent(providers::add);
             getProfileProvider().ifPresent(providers::add);
             getStsRoleProvider().ifPresent(providers::add);
             return providers;
@@ -265,6 +269,13 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             return Optional.ofNullable(optionsMap.get(AWS_MAX_BACK_OFF_TIME_MS)).map(p -> (String) p)
                     .map(Integer::parseInt)
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
+        }
+
+        private Optional<AwsBasicCredentialsProvider> getAwsBasicCredentialProvider() {
+            String accessKeyId = (String) optionsMap.getOrDefault(AWS_ACCESS_KEY_ID, null);
+            String secretAccessKey = (String) optionsMap.getOrDefault(AWS_SECRET_ACCESS_KEY, null);
+
+            return Optional.ofNullable(new AwsBasicCredentialsProvider(accessKeyId, secretAccessKey));
         }
 
         private Optional<EnhancedProfileCredentialsProvider> getProfileProvider() {
