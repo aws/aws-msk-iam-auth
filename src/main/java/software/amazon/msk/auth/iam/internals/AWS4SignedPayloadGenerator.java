@@ -44,7 +44,7 @@ import java.util.concurrent.TimeUnit;
  * of 15 minutes. Afterwards, the signed request is converted into a key value map with headers and query parameters
  * acting as keys. Then the key value map is serialized as a JSON object and returned as bytes.
  */
-class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
+public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private static final Logger log = LoggerFactory.getLogger(AWS4SignedPayloadGenerator.class);
 
     private static final String ACTION_KEY = "Action";
@@ -55,16 +55,27 @@ class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
 
     @Override
     public byte[] signedPayload(@NonNull AuthenticationRequestParams params) throws PayloadGenerationException {
-        final AWS4Signer signer = getConfiguredSigner(params);
-        final DefaultRequest request = createRequestForSigning(params);
-
-        signer.presignRequest(request, params.getAwsCredentials(), getExpiryDate());
+        final DefaultRequest request = presignRequest(params);
 
         try {
             return toPayloadBytes(request, params);
         } catch (IOException e) {
             throw new PayloadGenerationException("Failure to create authentication payload ", e);
         }
+    }
+
+    /**
+     * Presigns the request with AWS sigv4
+     *
+     * @param params authentication request parameters
+     * @return DefaultRequest object
+     */
+    public DefaultRequest presignRequest(@NonNull AuthenticationRequestParams params) {
+        final AWS4Signer signer = getConfiguredSigner(params);
+        final DefaultRequest request = createRequestForSigning(params);
+
+        signer.presignRequest(request, params.getAwsCredentials(), getExpiryDate());
+        return request;
     }
 
     private DefaultRequest createRequestForSigning(AuthenticationRequestParams params) {

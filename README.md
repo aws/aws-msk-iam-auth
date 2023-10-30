@@ -52,7 +52,7 @@ The recommended way to use this library is to consume it from maven central whil
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
 classpath.
 
-## Configuring a Kafka client to use AWS IAM
+## Configuring a Kafka client to use AWS IAM with AWS_MSK_IAM mechanism
 You can configure a Kafka client to use AWS IAM for authentication by adding the following properties to the client's 
 configuration. 
 
@@ -70,6 +70,23 @@ sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required;
 # The SASL client bound by "sasl.jaas.config" invokes this class.
 sasl.client.callback.handler.class = software.amazon.msk.auth.iam.IAMClientCallbackHandler
 ```
+
+## Configuring a Kafka client to use AWS IAM with SASL OAUTHBEARER mechanism
+You can alternatively use SASL/OAUTHBEARER mechanism using IAM authentication by adding following configuration.
+For more details on SASL/OAUTHBEARER mechanism, please read - [KIP-255](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=75968876)
+
+```properties
+# Sets up TLS for encryption and SASL for authN.
+security.protocol=SASL_SSL
+# Identifies the SASL mechanism to use.
+sasl.mechanism=OAUTHBEARER
+# Binds SASL client implementation.
+sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;
+# Encapsulates constructing a SigV4 signature based on extracted credentials.
+# The SASL client bound by "sasl.jaas.config" invokes this class.
+sasl.login.callback.handler.class=software.amazon.msk.auth.iam.IAMOAuthBearerLoginCallbackHandler
+```
+
 This configuration finds IAM credentials using the [AWS Default Credentials Provider Chain][DefaultCreds]. To summarize,
 the Default Credential Provider Chain looks for credentials in this order:
 
