@@ -29,7 +29,7 @@ import static com.amazonaws.util.IOUtils.closeQuietly;
 /**
  * This class is used to generate the user agent for the authentication request.
  */
-final class UserAgentUtils {
+public final class UserAgentUtils {
     private static final Logger log = LoggerFactory.getLogger(UserAgentUtils.class);
 
     private static final String USER_AGENT_SEP = "/";

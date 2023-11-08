@@ -2,4 +2,6 @@
 bin
 build
 lombok.config
-out/
+out
+.idea/
+*.iml
