@@ -28,6 +28,9 @@ import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
 import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
 import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.RegionUtils;
 import com.amazonaws.retry.PredefinedBackoffStrategies;
 import com.amazonaws.retry.v2.AndRetryCondition;
 import com.amazonaws.retry.v2.MaxNumberOfRetriesCondition;
@@ -84,6 +87,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String AWS_DEBUG_CREDS_KEY = "awsDebugCreds";
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
     private static final String AWS_MAX_BACK_OFF_TIME_MS = "awsMaxBackOffTimeMs";
+    private static final String GLOBAL_REGION = "aws-global";
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
     private static final int BASE_DELAY = 500;
@@ -105,10 +109,10 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     }
 
     MSKCredentialProvider(List<AWSCredentialsProvider> providers,
-            Boolean shouldDebugCreds,
-            String stsRegion,
-            int maxRetries,
-            int maxBackOffTimeMs) {
+                          Boolean shouldDebugCreds,
+                          String stsRegion,
+                          int maxRetries,
+                          int maxBackOffTimeMs) {
         List<AWSCredentialsProvider> delegateList = new ArrayList<>(providers);
         delegateList.add(getDefaultProvider());
         compositeDelegate = new AWSCredentialsProviderChain(delegateList);
@@ -199,19 +203,19 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
     AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
         return AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
-                    .withCredentials(new AWSCredentialsProvider() {
-                        @Override
-                        public AWSCredentials getCredentials() {
-                            return credentials;
-                        }
+                .withRegion(stsRegion)
+                .withCredentials(new AWSCredentialsProvider() {
+                    @Override
+                    public AWSCredentials getCredentials() {
+                        return credentials;
+                    }
 
-                        @Override
-                        public void refresh() {
+                    @Override
+                    public void refresh() {
 
-                        }
-                    })
-                    .build();
+                    }
+                })
+                .build();
     }
 
     @Override
@@ -253,7 +257,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
         public String getStsRegion() {
             return Optional.ofNullable((String) optionsMap.get(AWS_STS_REGION))
-                    .orElse("aws-global");
+                    .orElse(GLOBAL_REGION);
         }
 
         public int getMaxRetries() {
@@ -265,6 +269,27 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             return Optional.ofNullable(optionsMap.get(AWS_MAX_BACK_OFF_TIME_MS)).map(p -> (String) p)
                     .map(Integer::parseInt)
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
+        }
+
+        public EndpointConfiguration buildEndpointConfiguration(String stsRegion){
+            Region region = RegionUtils.getRegion(stsRegion);
+            String serviceEndpoint = region.getServiceEndpoint("sts");
+            EndpointConfiguration endpointConfiguration =
+                    new EndpointConfiguration(
+                            String.format(serviceEndpoint, stsRegion),
+                            stsRegion);
+
+            return endpointConfiguration;
+        }
+
+        private AWSSecurityTokenServiceClientBuilder getStsClientBuilder(String stsRegion) {
+            if (GLOBAL_REGION.equals(stsRegion)) {
+                return AWSSecurityTokenServiceClientBuilder.standard()
+                        .withRegion(stsRegion);
+            } else {
+                return AWSSecurityTokenServiceClientBuilder.standard()
+                        .withEndpointConfiguration(buildEndpointConfiguration(stsRegion));
+            }
         }
 
         private Optional<EnhancedProfileCredentialsProvider> getProfileProvider() {
@@ -298,7 +323,6 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                             sessionToken != null
                                     ? new BasicSessionCredentials(accessKey, secretKey, sessionToken)
                                     : new BasicAWSCredentials(accessKey, secretKey));
-
                     return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials);
                 }
                 else if (externalId != null) {
@@ -311,24 +335,16 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
 
         STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                 String sessionName, String stsRegion) {
-            AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
-                    .build();
             return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
-                    .withStsClient(stsClient)
+                    .withStsClient(getStsClientBuilder(stsRegion).build())
                     .build();
         }
 
         STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                 String sessionName, String stsRegion,
                                                                                 AWSCredentialsProvider credentials) {
-            AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
-                    .withCredentials(credentials)
-                    .build();
-
             return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
-                    .withStsClient(stsClient)
+                    .withStsClient(getStsClientBuilder(stsRegion).withCredentials(credentials).build())
                     .build();
         }
 
@@ -336,12 +352,8 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                                                                                 String externalId,
                                                                                 String sessionName,
                                                                                 String stsRegion) {
-            AWSSecurityTokenService stsClient = AWSSecurityTokenServiceClientBuilder.standard()
-                    .withRegion(stsRegion)
-                    .build();
-
             return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
-                    .withStsClient(stsClient)
+                    .withStsClient(getStsClientBuilder(stsRegion).build())
                     .withExternalId(externalId)
                     .build();
         }
