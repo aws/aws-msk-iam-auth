@@ -23,6 +23,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import com.amazonaws.client.builder.AwsClientBuilder;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -312,6 +314,8 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.getServiceEndpoint());
                 return mockStsRoleProvider;
             }
         };
@@ -347,6 +351,8 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
+                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.getServiceEndpoint());
                 return mockStsRoleProvider;
             }
         };
@@ -531,10 +537,10 @@ public class MSKCredentialProviderTest {
     }
 
     private MSKCredentialProvider.ProviderBuilder getProviderBuilder(STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider,
-            Map<String, String> optionsMap, String s) {
+                                                                     Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                    String sessionName, String stsRegion) {
+                                                                                    String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
                 return mockStsRoleProvider;
@@ -543,11 +549,11 @@ public class MSKCredentialProviderTest {
     }
 
     private MSKCredentialProvider.ProviderBuilder getProviderBuilderWithCredentials(STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider,
-            Map<String, String> optionsMap, String s) {
+                                                                                    Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                    String sessionName, String stsRegion,
-                    AWSCredentialsProvider credentials) {
+                                                                                    String sessionName, String stsRegion,
+                                                                                    AWSCredentialsProvider credentials) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
                 return mockStsRoleProvider;
