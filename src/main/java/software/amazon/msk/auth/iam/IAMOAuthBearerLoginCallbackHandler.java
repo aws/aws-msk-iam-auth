@@ -136,6 +136,7 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
         if (callback.token() != null) {
             throw new IllegalArgumentException("Callback had a token already");
         }
+        credentialsProvider.refresh();
         AWSCredentials awsCredentials = credentialsProvider.getCredentials();
 
         // Generate token value i.e. Base64 encoded pre-signed URL string
