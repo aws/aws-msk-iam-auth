@@ -45,8 +45,8 @@ public class IAMClientCallbackHandlerTest {
             }
 
             assertTrue(callback.isSuccessful());
-            assertEquals(ACCESS_KEY_VALUE, callback.getAwsCredentials().getAWSAccessKeyId());
-            assertEquals(SECRET_KEY_VALUE, callback.getAwsCredentials().getAWSSecretKey());
+            assertEquals(ACCESS_KEY_VALUE, callback.getAwsCredentials().accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, callback.getAwsCredentials().secretAccessKey());
         }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 

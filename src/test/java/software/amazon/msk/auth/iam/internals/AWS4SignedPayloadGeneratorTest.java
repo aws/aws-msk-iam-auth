@@ -15,8 +15,6 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.BasicAWSCredentials;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.io.IOException;
 import java.text.ParseException;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
 
 public class AWS4SignedPayloadGeneratorTest {
     private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
@@ -31,11 +31,11 @@ public class AWS4SignedPayloadGeneratorTest {
     private static final String SECRET_KEY = "SECRET_KEY";
     private static final String USER_AGENT = "USER_AGENT";
 
-    private AWSCredentials credentials;
+    private AwsCredentials credentials;
 
     @BeforeEach
     public void setup() {
-        credentials = new BasicAWSCredentials(ACCESS_KEY, SECRET_KEY);
+        credentials = AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY);
     }
 
     @Test

@@ -17,7 +17,9 @@ package software.amazon.msk.auth.iam.internals;
 
 public final class SystemPropertyCredentialsUtils {
     private static final String ACCESS_KEY_PROPERTY = "aws.accessKeyId";
-    private static final String SECRET_KEY_PROPERTY = "aws.secretKey";
+    private static final String SECRET_KEY_PROPERTY = "aws.secretAccessKey";
+    private static final String SESSION_TOKEN_PROPERTY = "aws.sessionToken";
+
     private static final String AWS_PROFILE_SYSTEM_PROPERTY = "aws.profile";
 
     private SystemPropertyCredentialsUtils() {
@@ -28,11 +30,13 @@ public final class SystemPropertyCredentialsUtils {
             String secretKeyValue) {
         String initialAccessKey = System.getProperty(ACCESS_KEY_PROPERTY);
         String initialSecretKey = System.getProperty(SECRET_KEY_PROPERTY);
+        String initialSessionToken = System.getProperty(SESSION_TOKEN_PROPERTY);
 
         try {
             //Setup test system properties
             System.setProperty(ACCESS_KEY_PROPERTY, accessKeyValue);
             System.setProperty(SECRET_KEY_PROPERTY, secretKeyValue);
+            System.clearProperty(SESSION_TOKEN_PROPERTY);
 
             test.run();
         } finally {
@@ -41,6 +45,9 @@ public final class SystemPropertyCredentialsUtils {
             }
             if (initialSecretKey != null) {
                 System.setProperty(SECRET_KEY_PROPERTY, initialSecretKey);
+            }
+            if (initialSessionToken != null) {
+                System.setProperty(SESSION_TOKEN_PROPERTY, initialSessionToken);
             }
         }
     }

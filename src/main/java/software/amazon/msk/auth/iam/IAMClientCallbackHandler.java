@@ -15,8 +15,8 @@
 */
 package software.amazon.msk.auth.iam;
 
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.msk.auth.iam.internals.AWSCredentialsCallback;
 import software.amazon.msk.auth.iam.internals.MSKCredentialProvider;
 import lombok.NonNull;
@@ -40,7 +40,7 @@ import java.util.Optional;
  */
 public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
-    private AWSCredentialsProvider provider;
+    private AwsCredentialsProvider provider;
 
     @Override
     public void configure(Map<String, ?> configs,
@@ -51,8 +51,8 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         }
         final Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
                 .filter(j -> IAMLoginModule.class.getCanonicalName().equals(j.getLoginModuleName())).findFirst();
-        provider = configEntry.map(c -> (AWSCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
-                .orElse(DefaultAWSCredentialsProviderChain.getInstance());
+        provider = configEntry.map(c -> (AwsCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
+                .orElse(DefaultCredentialsProvider.create());
     }
 
     @Override
@@ -96,8 +96,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
             log.debug("Selecting provider {} to load credentials", provider.getClass().getName());
         }
         try {
-            provider.refresh();
-            callback.setAwsCredentials(provider.getCredentials());
+            callback.setAwsCredentials(provider.resolveCredentials());
         } catch (Exception e) {
             callback.setLoadingException(e);
         }

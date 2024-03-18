@@ -15,14 +15,14 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.Regions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 public class AuthenticateRequestParamsTest {
     private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
     private static final String HOSTNAME_NO_REGION = "abcd.efgh.com";
-    private AWSCredentials credentials;
+    private AwsCredentials credentials;
     private static final String ACCESS_KEY = "ACCESS_KEY";
     private static final String SECRET_KEY = "SECRET_KEY";
     private static final String USER_AGENT = "USER_AGENT";
@@ -38,7 +38,7 @@ public class AuthenticateRequestParamsTest {
 
     @BeforeEach
     public void setup() {
-        credentials = new BasicAWSCredentials(ACCESS_KEY, SECRET_KEY);
+        credentials = AwsBasicCredentials.create(ACCESS_KEY, SECRET_KEY);
     }
 
     @Test
@@ -50,8 +50,8 @@ public class AuthenticateRequestParamsTest {
         assertEquals("kafka-cluster", params.getServiceScope());
         assertEquals(USER_AGENT, params.getUserAgent());
         assertEquals(VALID_HOSTNAME, params.getHost());
-        assertEquals(ACCESS_KEY, params.getAwsCredentials().getAWSAccessKeyId());
-        assertEquals(SECRET_KEY, params.getAwsCredentials().getAWSSecretKey());
+        assertEquals(ACCESS_KEY, params.getAwsCredentials().accessKeyId());
+        assertEquals(SECRET_KEY, params.getAwsCredentials().secretAccessKey());
     }
 
     @Test

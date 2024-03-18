@@ -15,24 +15,7 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
-import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
-import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
-import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
-import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.RegionUtils;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import java.net.URI;
 import java.time.Duration;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -45,6 +28,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.ContainerCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.retry.RetryPolicy;
@@ -55,7 +49,12 @@ import software.amazon.awssdk.core.retry.conditions.AndRetryCondition;
 import software.amazon.awssdk.core.retry.conditions.MaxNumberOfRetriesCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
-import software.amazon.msk.auth.iam.CompatibilityHelper;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.StsClientBuilder;
+import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
+import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 
 /**
@@ -76,7 +75,7 @@ import software.amazon.msk.auth.iam.CompatibilityHelper;
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
-public class MSKCredentialProvider implements AWSCredentialsProvider, AutoCloseable {
+public class MSKCredentialProvider implements AwsCredentialsProvider, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(MSKCredentialProvider.class);
     private static final String AWS_PROFILE_NAME_KEY = "awsProfileName";
     private static final String AWS_ROLE_ARN_KEY = "awsRoleArn";
@@ -95,7 +94,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final Duration BASE_DELAY = Duration.ofMillis(500);
 
     private final List<AutoCloseable> closeableProviders;
-    private final AWSCredentialsProvider compositeDelegate;
+    private final AwsCredentialsProvider compositeDelegate;
     @Getter(AccessLevel.PACKAGE)
     private final Boolean shouldDebugCreds;
     private final String stsRegion;
@@ -110,16 +109,19 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 builder.getMaxBackOffTimeMs());
     }
 
-    MSKCredentialProvider(List<AWSCredentialsProvider> providers,
+    MSKCredentialProvider(List<AwsCredentialsProvider> providers,
                           Boolean shouldDebugCreds,
                           String stsRegion,
                           int maxRetries,
                           int maxBackOffTimeMs) {
-        List<AWSCredentialsProvider> delegateList = new ArrayList<>(providers);
-        delegateList.add(getDefaultProvider());
-        compositeDelegate = new AWSCredentialsProviderChain(delegateList);
-        closeableProviders = providers.stream().filter(p -> p instanceof AutoCloseable).map(p -> (AutoCloseable) p)
-                .collect(Collectors.toList());
+        AwsCredentialsProviderChain.Builder chain = AwsCredentialsProviderChain.builder();
+        chain.credentialsProviders(providers);
+        chain.addCredentialsProvider(getDefaultProvider());
+        compositeDelegate = chain.build();
+        closeableProviders = providers.stream()
+            .filter(p -> p instanceof AutoCloseable)
+            .map(p -> (AutoCloseable) p)
+            .collect(Collectors.toList());
         this.shouldDebugCreds = shouldDebugCreds;
         this.stsRegion = stsRegion;
         BackoffStrategy backoffStrategy = FullJitterBackoffStrategy.builder()
@@ -145,35 +147,37 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     }
 
     //We want to override the ProfileCredentialsProvider with the EnhancedProfileCredentialsProvider
-    protected AWSCredentialsProviderChain getDefaultProvider() {
-        return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider(),
-                new SystemPropertiesCredentialsProvider(),
-                WebIdentityTokenCredentialsProvider.create(),
-                new EnhancedProfileCredentialsProvider(),
-                new EC2ContainerCredentialsProviderWrapper());
+    protected AwsCredentialsProvider getDefaultProvider() {
+        return AwsCredentialsProviderChain.of(
+            EnvironmentVariableCredentialsProvider.create(),
+            SystemPropertyCredentialsProvider.create(),
+            WebIdentityTokenFileCredentialsProvider.create(),
+            ProfileCredentialsProvider.create(),
+            ContainerCredentialsProvider.builder().build()
+        );
     }
 
     @Override
-    public AWSCredentials getCredentials() {
-        AWSCredentials credentials = loadCredentialsWithRetry();
+    public AwsCredentials resolveCredentials() {
+        AwsCredentials credentials = loadCredentialsWithRetry();
         if (credentials != null && shouldDebugCreds && log.isDebugEnabled()) {
             logCallerIdentity(credentials);
         }
         return  credentials;
     }
 
-    private AWSCredentials loadCredentialsWithRetry() {
+    private AwsCredentials loadCredentialsWithRetry() {
         RetryPolicyContext retryPolicyContext = RetryPolicyContext.builder().build();
         boolean shouldTry = true;
         try {
             while (shouldTry) {
                 try {
-                    AWSCredentials credentials = compositeDelegate.getCredentials();
+                    AwsCredentials credentials = compositeDelegate.resolveCredentials();
                     if (credentials == null) {
                         throw SdkClientException.create("Composite delegate returned empty credentials.");
                     }
                     return credentials;
-                } catch (com.amazonaws.SdkBaseException|SdkException se) {
+                } catch (SdkException se) {
                     log.warn("Exception loading credentials. Retry Attempts: {}",
                             retryPolicyContext.retriesAttempted(), se);
                     retryPolicyContext = createRetryPolicyContext(se, retryPolicyContext.retriesAttempted());
@@ -196,17 +200,17 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         }
     }
 
-    private RetryPolicyContext createRetryPolicyContext(RuntimeException sdkException, int retriesAttempted) {
+    private RetryPolicyContext createRetryPolicyContext(SdkException sdkException, int retriesAttempted) {
         return RetryPolicyContext.builder()
-            .exception(CompatibilityHelper.toSdkException(sdkException))
+            .exception(sdkException)
             .retriesAttempted(retriesAttempted)
             .build();
     }
 
-    private void logCallerIdentity(AWSCredentials credentials) {
+    private void logCallerIdentity(AwsCredentials credentials) {
         try {
-            AWSSecurityTokenService stsClient = getStsClientForDebuggingCreds(credentials);
-            GetCallerIdentityResult response = stsClient.getCallerIdentity(new GetCallerIdentityRequest());
+            StsClient stsClient = getStsClientForDebuggingCreds(credentials);
+            GetCallerIdentityResponse response = stsClient.getCallerIdentity();
             log.debug("The identity of the credentials is {}", response.toString());
         } catch (Exception e) {
             //If we run into an exception logging the caller identity, we should log the exception but
@@ -216,26 +220,11 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         }
     }
 
-    AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
-        return AWSSecurityTokenServiceClientBuilder.standard()
-                .withRegion(stsRegion)
-                .withCredentials(new AWSCredentialsProvider() {
-                    @Override
-                    public AWSCredentials getCredentials() {
-                        return credentials;
-                    }
-
-                    @Override
-                    public void refresh() {
-
-                    }
-                })
-                .build();
-    }
-
-    @Override
-    public void refresh() {
-        compositeDelegate.refresh();
+    StsClient getStsClientForDebuggingCreds(AwsCredentials credentials) {
+        return StsClient.builder()
+            .credentialsProvider(StaticCredentialsProvider.create(credentials))
+            .region(Region.of(stsRegion))
+            .build();
     }
 
     @Override
@@ -259,8 +248,8 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             }
         }
 
-        public List<AWSCredentialsProvider> getProviders() {
-            List<AWSCredentialsProvider> providers = new ArrayList<>();
+        public List<AwsCredentialsProvider> getProviders() {
+            List<AwsCredentialsProvider> providers = new ArrayList<>();
             getProfileProvider().ifPresent(providers::add);
             getStsRoleProvider().ifPresent(providers::add);
             return providers;
@@ -286,28 +275,22 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
         }
 
-        public EndpointConfiguration buildEndpointConfiguration(String stsRegion){
-            Region region = RegionUtils.getRegion(stsRegion);
-            String serviceEndpoint = region.getServiceEndpoint("sts");
-            EndpointConfiguration endpointConfiguration =
-                    new EndpointConfiguration(
-                            String.format(serviceEndpoint, stsRegion),
-                            stsRegion);
-
-            return endpointConfiguration;
+        public URI buildEndpointConfiguration(String stsRegion){
+            return URI.create("sts." + stsRegion + ".amazonaws.com");
         }
 
-        private AWSSecurityTokenServiceClientBuilder getStsClientBuilder(String stsRegion) {
+        private StsClientBuilder getStsClientBuilder(String stsRegion) {
             if (GLOBAL_REGION.equals(stsRegion)) {
-                return AWSSecurityTokenServiceClientBuilder.standard()
-                        .withRegion(stsRegion);
+                return StsClient.builder()
+                    .region(software.amazon.awssdk.regions.Region.AWS_GLOBAL);
             } else {
-                return AWSSecurityTokenServiceClientBuilder.standard()
-                        .withEndpointConfiguration(buildEndpointConfiguration(stsRegion));
+                return StsClient.builder()
+                    .region(software.amazon.awssdk.regions.Region.of(stsRegion))
+                    .endpointOverride(buildEndpointConfiguration(stsRegion));
             }
         }
 
-        private Optional<EnhancedProfileCredentialsProvider> getProfileProvider() {
+        private Optional<ProfileCredentialsProvider> getProfileProvider() {
             return Optional.ofNullable(optionsMap.get(AWS_PROFILE_NAME_KEY)).map(p -> {
                 if (log.isDebugEnabled()) {
                     log.debug("Profile name {}", p);
@@ -316,11 +299,11 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             });
         }
 
-        EnhancedProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String p) {
-            return new EnhancedProfileCredentialsProvider(p);
+        ProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String p) {
+            return ProfileCredentialsProvider.create(p);
         }
 
-        private Optional<STSAssumeRoleSessionCredentialsProvider> getStsRoleProvider() {
+        private Optional<StsAssumeRoleCredentialsProvider> getStsRoleProvider() {
             return Optional.ofNullable(optionsMap.get(AWS_ROLE_ARN_KEY)).map(p -> {
                 if (log.isDebugEnabled()) {
                     log.debug("Role ARN {}", p);
@@ -334,10 +317,10 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 String sessionToken = (String) optionsMap.getOrDefault(AWS_ROLE_SESSION_TOKEN, null);
                 String externalId = (String) optionsMap.getOrDefault(AWS_ROLE_EXTERNAL_ID, null);
                 if (accessKey != null && secretKey != null) {
-                    AWSCredentialsProvider credentials = new AWSStaticCredentialsProvider(
+                    AwsCredentialsProvider credentials = StaticCredentialsProvider.create(
                             sessionToken != null
-                                    ? new BasicSessionCredentials(accessKey, secretKey, sessionToken)
-                                    : new BasicAWSCredentials(accessKey, secretKey));
+                                    ? AwsSessionCredentials.create(accessKey, secretKey, sessionToken)
+                                    : AwsBasicCredentials.create(accessKey, secretKey));
                     return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials);
                 }
                 else if (externalId != null) {
@@ -348,29 +331,53 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
             });
         }
 
-        STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                                String sessionName, String stsRegion) {
-            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
-                    .withStsClient(getStsClientBuilder(stsRegion).build())
-                    .build();
+        StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(
+            String roleArn,
+            String sessionName,
+            String stsRegion) {
+            AssumeRoleRequest roleRequest = AssumeRoleRequest.builder()
+                .roleArn(roleArn)
+                .roleSessionName(sessionName)
+                .build();
+            StsClient stsClient = getStsClientBuilder(stsRegion)
+                .build();
+            return StsAssumeRoleCredentialsProvider.builder()
+                .stsClient(stsClient)
+                .refreshRequest(roleRequest)
+                .build();
         }
 
-        STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                                String sessionName, String stsRegion,
-                                                                                AWSCredentialsProvider credentials) {
-            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
-                    .withStsClient(getStsClientBuilder(stsRegion).withCredentials(credentials).build())
-                    .build();
+        StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(
+            String roleArn,
+            String sessionName, String stsRegion,
+            AwsCredentialsProvider credentials) {
+            AssumeRoleRequest roleRequest = AssumeRoleRequest.builder()
+                .roleArn(roleArn)
+                .roleSessionName(sessionName)
+                .build();
+            StsClient stsClient = getStsClientBuilder(stsRegion)
+                .credentialsProvider(credentials)
+                .build();
+            return StsAssumeRoleCredentialsProvider.builder()
+                .stsClient(stsClient)
+                .refreshRequest(roleRequest)
+                .build();
         }
 
-        STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                                String externalId,
-                                                                                String sessionName,
-                                                                                String stsRegion) {
-            return new STSAssumeRoleSessionCredentialsProvider.Builder(roleArn, sessionName)
-                    .withStsClient(getStsClientBuilder(stsRegion).build())
-                    .withExternalId(externalId)
-                    .build();
+        StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(
+            String roleArn,
+            String externalId,
+            String sessionName,
+            String stsRegion) {
+            AssumeRoleRequest roleRequest = AssumeRoleRequest.builder()
+                .externalId(externalId)
+                .roleArn(roleArn)
+                .roleSessionName(sessionName)
+                .build();
+            return StsAssumeRoleCredentialsProvider.builder()
+                .stsClient(getStsClientBuilder(stsRegion).build())
+                .refreshRequest(roleRequest)
+                .build();
         }
     }
 }
