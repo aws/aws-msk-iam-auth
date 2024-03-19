@@ -17,39 +17,39 @@ package software.amazon.msk.auth.iam.internals;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import com.amazonaws.client.builder.AwsClientBuilder;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import com.amazonaws.SdkBaseException;
-import com.amazonaws.SdkClientException;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSCredentialsProviderChain;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
-import com.amazonaws.auth.EnvironmentVariableCredentialsProvider;
-import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
-import com.amazonaws.auth.SystemPropertiesCredentialsProvider;
-import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
-import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
-import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.auth.credentials.ContainerCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsProvider;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.profiles.ProfileFile;
+import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
+import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static software.amazon.msk.auth.iam.internals.SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials;
 import static software.amazon.msk.auth.iam.internals.SystemPropertyCredentialsUtils.runTestWithSystemPropertyProfile;
@@ -87,10 +87,10 @@ public class MSKCredentialProviderTest {
             MSKCredentialProvider provider = new MSKCredentialProvider(Collections.emptyMap());
             assertFalse(provider.getShouldDebugCreds());
 
-            AWSCredentials credentials = provider.getCredentials();
+            AwsCredentials credentials = provider.resolveCredentials();
 
-            assertEquals(ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
-            assertEquals(SECRET_KEY_VALUE, credentials.getAWSSecretKey());
+            assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
         }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
@@ -105,10 +105,10 @@ public class MSKCredentialProviderTest {
             optionsMap.put(AWS_PROFILE_NAME, "MISSING_PROFILE");
             MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
 
-            AWSCredentials credentials = provider.getCredentials();
+            AwsCredentials credentials = provider.resolveCredentials();
 
-            assertEquals(ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
-            assertEquals(SECRET_KEY_VALUE, credentials.getAWSSecretKey());
+            assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
         }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
@@ -125,19 +125,21 @@ public class MSKCredentialProviderTest {
         runTestWithSystemPropertyProfile(() -> {
             ProfileFile profileFile = getProfileFile();
             MSKCredentialProvider provider = new MSKCredentialProvider(Collections.emptyMap()) {
-                protected AWSCredentialsProviderChain getDefaultProvider() {
-                    return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider(),
-                            new SystemPropertiesCredentialsProvider(),
-                            WebIdentityTokenCredentialsProvider.create(),
-                            new EnhancedProfileCredentialsProvider(profileFile, null),
-                            new EC2ContainerCredentialsProviderWrapper());
+                protected AwsCredentialsProvider getDefaultProvider() {
+                    return AwsCredentialsProviderChain.of(
+                        EnvironmentVariableCredentialsProvider.create(),
+                        SystemPropertyCredentialsProvider.create(),
+                        WebIdentityTokenFileCredentialsProvider.create(),
+                        ProfileCredentialsProvider.builder().profileFile(profileFile).build(),
+                        ContainerCredentialsProvider.builder().build()
+                    );
                 }
             };
 
-            AWSCredentials credentials = provider.getCredentials();
+            AwsCredentials credentials = provider.resolveCredentials();
 
-            assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
-            assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
+            assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.secretAccessKey());
         }, TEST_PROFILE_NAME);
     }
 
@@ -147,25 +149,28 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_PROFILE_NAME, "test_profile");
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            EnhancedProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String profileName) {
+            ProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String profileName) {
                 assertEquals(TEST_PROFILE_NAME, profileName);
-                return new EnhancedProfileCredentialsProvider(profileFile, TEST_PROFILE_NAME);
+                return ProfileCredentialsProvider.builder()
+                    .profileFile(profileFile)
+                    .profileName(TEST_PROFILE_NAME)
+                    .build();
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
-        assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
-        assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
+        AwsCredentials credentials = provider.resolveCredentials();
+        assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.accessKeyId());
+        assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.secretAccessKey());
     }
 
     @Test
     public void testAwsRoleArn() {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -175,7 +180,7 @@ public class MSKCredentialProviderTest {
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentials(credentials);
 
         provider.close();
@@ -184,10 +189,10 @@ public class MSKCredentialProviderTest {
 
     @Test
     public void testAwsRoleArnWithAccessKey() {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenAnswer(invocation -> new BasicSessionCredentials(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -199,7 +204,7 @@ public class MSKCredentialProviderTest {
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentialsTwo(credentials);
 
         provider.close();
@@ -208,10 +213,10 @@ public class MSKCredentialProviderTest {
 
     @Test
     public void testAwsRoleArnWithDebugCreds() {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -220,22 +225,22 @@ public class MSKCredentialProviderTest {
         MSKCredentialProvider.ProviderBuilder providerBuilder = getProviderBuilder(mockStsRoleProvider, optionsMap,
                 "aws-msk-iam-auth");
 
-        AWSSecurityTokenService mockSts = Mockito.mock(AWSSecurityTokenService.class);
-        Mockito.when(mockSts.getCallerIdentity(Mockito.any(GetCallerIdentityRequest.class))).thenReturn(new GetCallerIdentityResult().withUserId("TEST_USER_ID").withAccount("TEST_ACCOUNT").withArn("TEST_ARN"));
+        StsClient mockSts = Mockito.mock(StsClient.class);
+        Mockito.when(mockSts.getCallerIdentity()).thenReturn(GetCallerIdentityResponse.builder().userId("TEST_USER_ID").account("TEST_ACCOUNT").arn("TEST_ARN").build());
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder) {
-            AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
+            StsClient getStsClientForDebuggingCreds(AwsCredentials credentials) {
                 return mockSts;
             }
         };
 
         assertTrue(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentials(credentials);
 
         provider.close();
         Mockito.verify(mockStsRoleProvider, times(1)).close();
-        Mockito.verify(mockSts, times(1)).getCallerIdentity(any(GetCallerIdentityRequest.class));
+        Mockito.verify(mockSts, times(1)).getCallerIdentity();
     }
 
     @Test
@@ -244,41 +249,41 @@ public class MSKCredentialProviderTest {
         optionsMap.put(AWS_DEBUG_CREDS_NAME, "true");
 
 
-        EC2ContainerCredentialsProviderWrapper mockEc2CredsProvider = Mockito.mock(EC2ContainerCredentialsProviderWrapper.class);
-        Mockito.when(mockEc2CredsProvider.getCredentials())
-                .thenReturn(new BasicAWSCredentials(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO));
+        ContainerCredentialsProvider mockEc2CredsProvider = Mockito.mock(ContainerCredentialsProvider.class);
+        Mockito.when(mockEc2CredsProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsBasicCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO)));
 
-        AWSSecurityTokenService mockSts = Mockito.mock(AWSSecurityTokenService.class);
-        Mockito.when(mockSts.getCallerIdentity(Mockito.any(GetCallerIdentityRequest.class)))
-                .thenThrow(new SdkClientException("TEST TEST"));
+        StsClient mockSts = Mockito.mock(StsClient.class);
+        Mockito.when(mockSts.getCallerIdentity())
+                .thenThrow(SdkClientException.create("TEST TEST"));
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
-            protected AWSCredentialsProviderChain getDefaultProvider() {
-                return new AWSCredentialsProviderChain(mockEc2CredsProvider);
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEc2CredsProvider;
             }
 
-            AWSSecurityTokenService getStsClientForDebuggingCreds(AWSCredentials credentials) {
+            StsClient getStsClientForDebuggingCreds(AwsCredentials credentials) {
                 return mockSts;
             }
         };
         assertTrue(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
 
         validateBasicCredentialsTwo(credentials);
 
         provider.close();
-        Mockito.verify(mockSts, times(1)).getCallerIdentity(Mockito.any());
-        Mockito.verify(mockEc2CredsProvider, times(1)).getCredentials();
+        Mockito.verify(mockSts, times(1)).getCallerIdentity();
+        Mockito.verify(mockEc2CredsProvider, times(1)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
     @Test
     public void testAwsRoleArnAndSessionName() {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -289,7 +294,7 @@ public class MSKCredentialProviderTest {
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentials(credentials);
 
         provider.close();
@@ -298,10 +303,10 @@ public class MSKCredentialProviderTest {
 
     @Test
     public void testAwsRoleArnSessionNameAndStsRegion() {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -309,20 +314,20 @@ public class MSKCredentialProviderTest {
         optionsMap.put("awsStsRegion", "eu-west-1");
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+            StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
-                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
-                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.getServiceEndpoint());
+                URI endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentials(credentials);
 
         provider.close();
@@ -331,10 +336,10 @@ public class MSKCredentialProviderTest {
 
     @Test
     public void testAwsRoleArnSessionNameStsRegionAndExternalId() {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -343,7 +348,7 @@ public class MSKCredentialProviderTest {
         optionsMap.put("awsStsRegion", "eu-west-1");
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+            StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String externalId,
                                                                                     String sessionName,
                                                                                     String stsRegion) {
@@ -351,15 +356,15 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
-                AwsClientBuilder.EndpointConfiguration endpointConfiguration = buildEndpointConfiguration(stsRegion);
-                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.getServiceEndpoint());
+                URI endpointConfiguration = buildEndpointConfiguration(stsRegion);
+                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentials(credentials);
 
         provider.close();
@@ -369,21 +374,23 @@ public class MSKCredentialProviderTest {
     @Test
     public void testProfileNameAndRoleArn() {
         ProfileFile profileFile = getProfileFile();
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO, SESSION_TOKEN));
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO, SESSION_TOKEN)));
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_PROFILE_NAME, "test_profile");
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            EnhancedProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String profileName) {
+            ProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String profileName) {
                 assertEquals(TEST_PROFILE_NAME, profileName);
-                return new EnhancedProfileCredentialsProvider(profileFile, TEST_PROFILE_NAME);
+                return ProfileCredentialsProvider.builder().profileFile(profileFile)
+                    .profileName(TEST_PROFILE_NAME)
+                    .build();
             }
 
-            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+            StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals("aws-msk-iam-auth", sessionName);
@@ -393,12 +400,12 @@ public class MSKCredentialProviderTest {
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         provider.close();
 
-        assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.getAWSAccessKeyId());
-        assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.getAWSSecretKey());
-        Mockito.verify(mockStsRoleProvider, times(0)).getCredentials();
+        assertEquals(PROFILE_ACCESS_KEY_VALUE, credentials.accessKeyId());
+        assertEquals(PROFILE_SECRET_KEY_VALUE, credentials.secretAccessKey());
+        Mockito.verify(mockStsRoleProvider, times(0)).resolveCredentials();
         Mockito.verify(mockStsRoleProvider, times(1)).close();
     }
 
@@ -415,7 +422,7 @@ public class MSKCredentialProviderTest {
     @Test
     public void testRoleCredsWithFourRetriableErrors_ThrowsException() {
         int numExceptions = 4;
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = setupMockStsRoleCredentialsProviderWithRetriableExceptions(numExceptions);
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = setupMockStsRoleCredentialsProviderWithRetriableExceptions(numExceptions);
 
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
@@ -424,15 +431,15 @@ public class MSKCredentialProviderTest {
                 "aws-msk-iam-auth");
 
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder) {
-            protected AWSCredentialsProviderChain getDefaultProvider() {
-                return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider());
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return EnvironmentVariableCredentialsProvider.create();
             }
         };
         assertFalse(provider.getShouldDebugCreds());
 
-        assertThrows(SdkClientException.class, () -> provider.getCredentials());
+        assertThrows(SdkClientException.class, () -> provider.resolveCredentials());
 
-        Mockito.verify(mockStsRoleProvider, times(numExceptions)).getCredentials();
+        Mockito.verify(mockStsRoleProvider, times(numExceptions)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockStsRoleProvider);
     }
 
@@ -452,18 +459,18 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "5");
 
-        AWSCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+        AwsCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
-            protected AWSCredentialsProviderChain getDefaultProvider() {
-                return new AWSCredentialsProviderChain(mockEc2CredsProvider);
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEc2CredsProvider;
             }
         };
         assertFalse(provider.getShouldDebugCreds());
 
-        assertThrows(SdkClientException.class, () -> provider.getCredentials());
+        assertThrows(SdkClientException.class, () -> provider.resolveCredentials());
 
-        Mockito.verify(mockEc2CredsProvider, times(numExceptions)).getCredentials();
+        Mockito.verify(mockEc2CredsProvider, times(numExceptions)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
@@ -473,18 +480,18 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "0");
 
-        AWSCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+        AwsCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
-            protected AWSCredentialsProviderChain getDefaultProvider() {
-                return new AWSCredentialsProviderChain(mockEc2CredsProvider);
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEc2CredsProvider;
             }
         };
         assertFalse(provider.getShouldDebugCreds());
 
-        assertThrows(SdkClientException.class, () -> provider.getCredentials());
+        assertThrows(SdkClientException.class, () -> provider.resolveCredentials());
 
-        Mockito.verify(mockEc2CredsProvider, times(numExceptions)).getCredentials();
+        Mockito.verify(mockEc2CredsProvider, times(numExceptions)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
@@ -492,26 +499,26 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "5");
 
-        AWSCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+        AwsCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
-            protected AWSCredentialsProviderChain getDefaultProvider() {
-                return new AWSCredentialsProviderChain(mockEc2CredsProvider);
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEc2CredsProvider;
             }
         };
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
 
         validateBasicCredentialsTwo(credentials);
 
         provider.close();
-        Mockito.verify(mockEc2CredsProvider, times(numExceptions + 1)).getCredentials();
+        Mockito.verify(mockEc2CredsProvider, times(numExceptions + 1)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
     private void testRoleCredsWithRetriableErrors(int numExceptions) {
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = setupMockStsRoleCredentialsProviderWithRetriableExceptions(
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = setupMockStsRoleCredentialsProviderWithRetriableExceptions(
                 numExceptions);
 
         Map<String, String> optionsMap = new HashMap<>();
@@ -521,25 +528,25 @@ public class MSKCredentialProviderTest {
                 "aws-msk-iam-auth");
 
         MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder) {
-            protected AWSCredentialsProviderChain getDefaultProvider() {
-                return new AWSCredentialsProviderChain(new EnvironmentVariableCredentialsProvider());
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return EnvironmentVariableCredentialsProvider.create();
             }
         };
         assertFalse(provider.getShouldDebugCreds());
 
-        AWSCredentials credentials = provider.getCredentials();
+        AwsCredentials credentials = provider.resolveCredentials();
         validateBasicSessionCredentials(credentials);
 
         provider.close();
-        Mockito.verify(mockStsRoleProvider, times(numExceptions + 1)).getCredentials();
+        Mockito.verify(mockStsRoleProvider, times(numExceptions + 1)).resolveIdentity();
         Mockito.verify(mockStsRoleProvider, times(1)).close();
         Mockito.verifyNoMoreInteractions(mockStsRoleProvider);
     }
 
-    private MSKCredentialProvider.ProviderBuilder getProviderBuilder(STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider,
+    private MSKCredentialProvider.ProviderBuilder getProviderBuilder(StsAssumeRoleCredentialsProvider mockStsRoleProvider,
                                                                      Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+            StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
@@ -548,12 +555,12 @@ public class MSKCredentialProviderTest {
         };
     }
 
-    private MSKCredentialProvider.ProviderBuilder getProviderBuilderWithCredentials(STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider,
+    private MSKCredentialProvider.ProviderBuilder getProviderBuilderWithCredentials(StsAssumeRoleCredentialsProvider mockStsRoleProvider,
                                                                                     Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
-            STSAssumeRoleSessionCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+            StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion,
-                                                                                    AWSCredentialsProvider credentials) {
+                                                                                    AwsCredentialsProvider credentials) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
                 return mockStsRoleProvider;
@@ -561,58 +568,60 @@ public class MSKCredentialProviderTest {
         };
     }
 
-    private void validateBasicSessionCredentials(AWSCredentials credentials) {
-        assertTrue(credentials instanceof BasicSessionCredentials);
-        BasicSessionCredentials sessionCredentials = (BasicSessionCredentials) credentials;
-        assertEquals(ACCESS_KEY_VALUE, sessionCredentials.getAWSAccessKeyId());
-        assertEquals(SECRET_KEY_VALUE, sessionCredentials.getAWSSecretKey());
-        assertEquals(SESSION_TOKEN, sessionCredentials.getSessionToken());
+    private void validateBasicSessionCredentials(AwsCredentials credentials) {
+        assertTrue(credentials instanceof AwsSessionCredentials);
+        AwsSessionCredentials sessionCredentials = (AwsSessionCredentials) credentials;
+        assertEquals(ACCESS_KEY_VALUE, sessionCredentials.accessKeyId());
+        assertEquals(SECRET_KEY_VALUE, sessionCredentials.secretAccessKey());
+        assertEquals(SESSION_TOKEN, sessionCredentials.sessionToken());
     }
 
-    private void validateBasicSessionCredentialsTwo(AWSCredentials credentials) {
-        assertTrue(credentials instanceof BasicSessionCredentials);
-        BasicSessionCredentials sessionCredentials = (BasicSessionCredentials) credentials;
-        assertEquals(ACCESS_KEY_VALUE_TWO, sessionCredentials.getAWSAccessKeyId());
-        assertEquals(SECRET_KEY_VALUE_TWO, sessionCredentials.getAWSSecretKey());
-        assertEquals(SESSION_TOKEN, sessionCredentials.getSessionToken());
+    private void validateBasicSessionCredentialsTwo(AwsCredentials credentials) {
+        assertTrue(credentials instanceof AwsSessionCredentials);
+        AwsSessionCredentials sessionCredentials = (AwsSessionCredentials) credentials;
+        assertEquals(ACCESS_KEY_VALUE_TWO, sessionCredentials.accessKeyId());
+        assertEquals(SECRET_KEY_VALUE_TWO, sessionCredentials.secretAccessKey());
+        assertEquals(SESSION_TOKEN, sessionCredentials.sessionToken());
     }
 
-    private void validateBasicCredentialsTwo(AWSCredentials credentials) {
-        assertTrue(credentials instanceof BasicAWSCredentials);
-        assertEquals(ACCESS_KEY_VALUE_TWO, credentials.getAWSAccessKeyId());
-        assertEquals(SECRET_KEY_VALUE_TWO, credentials.getAWSSecretKey());
+    private void validateBasicCredentialsTwo(AwsCredentials credentials) {
+        assertTrue(credentials instanceof AwsBasicCredentials);
+        assertEquals(ACCESS_KEY_VALUE_TWO, credentials.accessKeyId());
+        assertEquals(SECRET_KEY_VALUE_TWO, credentials.secretAccessKey());
     }
 
-    private STSAssumeRoleSessionCredentialsProvider setupMockStsRoleCredentialsProviderWithRetriableExceptions(int numErrors) {
-        SdkBaseException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
+    private StsAssumeRoleCredentialsProvider setupMockStsRoleCredentialsProviderWithRetriableExceptions(int numErrors) {
+        SdkException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
 
-        STSAssumeRoleSessionCredentialsProvider mockStsRoleProvider = Mockito
-                .mock(STSAssumeRoleSessionCredentialsProvider.class);
-        Mockito.when(mockStsRoleProvider.getCredentials())
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
                 .thenThrow(exceptionsToThrow)
-                .thenReturn(new BasicSessionCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
         return mockStsRoleProvider;
     }
 
-    private SdkBaseException[] getSdkBaseExceptions(int numErrors) {
-        final SdkBaseException exceptionFromProvider = new SdkClientException("TEST TEST TEST");
+    private SdkException[] getSdkBaseExceptions(int numErrors) {
+        final SdkException exceptionFromProvider = SdkClientException.create("TEST TEST TEST");
         return IntStream.range(0, numErrors).mapToObj(i -> exceptionFromProvider)
-                .collect(Collectors.toList()).toArray(new SdkBaseException[numErrors]);
+                .collect(Collectors.toList()).toArray(new SdkException[numErrors]);
     }
 
-    private AWSCredentialsProvider setupMockDefaultProviderWithRetriableExceptions(int numErrors) {
-        SdkBaseException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
-        EC2ContainerCredentialsProviderWrapper mockEc2Provider = Mockito.mock(EC2ContainerCredentialsProviderWrapper.class);
+    private AwsCredentialsProvider setupMockDefaultProviderWithRetriableExceptions(int numErrors) {
+        SdkException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
+        ContainerCredentialsProvider mockEc2Provider = Mockito.mock(ContainerCredentialsProvider.class);
 
-        Mockito.when(mockEc2Provider.getCredentials())
+        Mockito.when(mockEc2Provider.resolveIdentity())
                 .thenThrow(exceptionsToThrow)
-                .thenReturn(new BasicAWSCredentials(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO));
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsBasicCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO)));
         return mockEc2Provider;
     }
 
     private ProfileFile getProfileFile() {
-        return ProfileFile.builder().content(new File(getProfileResourceURL().getFile()).toPath()).type(
-                ProfileFile.Type.CREDENTIALS).build();
+        return ProfileFile.builder()
+            .content(new File(getProfileResourceURL().getFile()).toPath())
+            .type(ProfileFile.Type.CREDENTIALS)
+            .build();
     }
 
     private URL getProfileResourceURL() {

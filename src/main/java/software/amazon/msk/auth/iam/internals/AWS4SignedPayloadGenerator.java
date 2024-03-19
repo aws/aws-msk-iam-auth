@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
+import software.amazon.msk.auth.iam.CompatibilityHelper;
 
 /**
  * This class is used to generate the AWS Sigv4 signed authentication payload sent by the IAMSaslClient to the broker.
@@ -74,7 +75,7 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
         final AWS4Signer signer = getConfiguredSigner(params);
         final DefaultRequest request = createRequestForSigning(params);
 
-        signer.presignRequest(request, params.getAwsCredentials(), getExpiryDate());
+        signer.presignRequest(request, CompatibilityHelper.toV1Credentials(params.getAwsCredentials()), getExpiryDate());
         return request;
     }
 

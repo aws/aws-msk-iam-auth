@@ -15,8 +15,8 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.auth.BasicAWSCredentials;
 import org.junit.jupiter.api.BeforeEach;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,7 +48,7 @@ public class IAMSaslClientTest {
     private static final String SECRET_KEY_VALUE_TWO = "SECRET_KEY_VALUE_TWO";
     private static final String RESPONSE_VERSION = "2020_10_22";
 
-    private static final BasicAWSCredentials BASIC_AWS_CREDENTIALS = new BasicAWSCredentials(ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    private static final AwsBasicCredentials BASIC_AWS_CREDENTIALS = AwsBasicCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
 
     @BeforeEach
     public void setUp() {
@@ -57,8 +57,15 @@ public class IAMSaslClientTest {
 
     @Test
     public void testCompleteValidExchange() throws IOException {
-        IAMSaslClient saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
-        runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+        SystemPropertyCredentialsUtils.runTestWithSystemPropertyCredentials(() -> {
+            IAMSaslClient saslClient = null;
+            try {
+                saslClient = getSuccessfulIAMClient(getIamClientCallbackHandler());
+            } catch (SaslException e) {
+                throw new RuntimeException(e);
+            }
+            runValidExchangeForSaslClient(saslClient, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
     private void runValidExchangeForSaslClient(IAMSaslClient saslClient, String accessKey, String secretKey) {
@@ -68,11 +75,10 @@ public class IAMSaslClientTest {
             try {
                 byte[] response = saslClient.evaluateChallenge(new byte[] {});
 
-                SignedPayloadValidatorUtils
-                        .validatePayload(response,
-                                AuthenticationRequestParams
-                                        .create(VALID_HOSTNAME, new BasicAWSCredentials(accessKey, secretKey),
-                                                UserAgentUtils.getUserAgentValue()));
+                AwsBasicCredentials credentials = AwsBasicCredentials.create(accessKey, secretKey);
+                AuthenticationRequestParams requestParams = AuthenticationRequestParams.create(
+                    VALID_HOSTNAME, credentials, UserAgentUtils.getUserAgentValue());
+                SignedPayloadValidatorUtils.validatePayload(response, requestParams);
                 assertFalse(saslClient.isComplete());
 
                 String requestId = RandomStringUtils.randomAlphabetic(10);
@@ -219,9 +225,9 @@ public class IAMSaslClientTest {
     }
 
     private static class SuccessfulIAMCallbackHandler extends IAMClientCallbackHandler {
-        private final BasicAWSCredentials basicAWSCredentials;
+        private final AwsBasicCredentials basicAWSCredentials;
 
-        public SuccessfulIAMCallbackHandler(BasicAWSCredentials basicAWSCredentials) {
+        public SuccessfulIAMCallbackHandler(AwsBasicCredentials basicAWSCredentials) {
             this.basicAWSCredentials = basicAWSCredentials;
         }
 
