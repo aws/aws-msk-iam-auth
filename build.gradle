@@ -49,7 +49,7 @@ dependencies {
     implementation('software.amazon.awssdk:sso')
     implementation("software.amazon.awssdk:ssooidc")
     implementation('software.amazon.awssdk:sts')
-    implementation('com.fasterxml.jackson.core:jackson-databind:2.14.1')
+    implementation('com.fasterxml.jackson.core:jackson-databind:2.17.0')
     implementation('org.slf4j:slf4j-api:1.7.25')
 
     runtimeOnly('software.amazon.awssdk:apache-client')
