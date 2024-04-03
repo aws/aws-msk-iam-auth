@@ -15,8 +15,6 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.SdkBaseException;
-import com.amazonaws.SdkClientException;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSCredentialsProviderChain;
@@ -31,17 +29,11 @@ import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionUtils;
-import com.amazonaws.retry.PredefinedBackoffStrategies;
-import com.amazonaws.retry.v2.AndRetryCondition;
-import com.amazonaws.retry.v2.MaxNumberOfRetriesCondition;
-import com.amazonaws.retry.v2.RetryOnExceptionsCondition;
-import com.amazonaws.retry.v2.RetryPolicy;
-import com.amazonaws.retry.v2.RetryPolicyContext;
-import com.amazonaws.retry.v2.SimpleRetryPolicy;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityRequest;
 import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
+import java.time.Duration;
 import lombok.AccessLevel;
 import lombok.Getter;
 
@@ -49,11 +41,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.core.retry.RetryPolicy;
+import software.amazon.awssdk.core.retry.RetryPolicyContext;
+import software.amazon.awssdk.core.retry.backoff.BackoffStrategy;
+import software.amazon.awssdk.core.retry.backoff.FullJitterBackoffStrategy;
+import software.amazon.awssdk.core.retry.conditions.AndRetryCondition;
+import software.amazon.awssdk.core.retry.conditions.MaxNumberOfRetriesCondition;
+import software.amazon.awssdk.core.retry.conditions.RetryCondition;
+import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
+import software.amazon.msk.auth.iam.CompatibilityHelper;
 
 
 /**
@@ -90,7 +92,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
     private static final String GLOBAL_REGION = "aws-global";
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
-    private static final int BASE_DELAY = 500;
+    private static final Duration BASE_DELAY = Duration.ofMillis(500);
 
     private final List<AutoCloseable> closeableProviders;
     private final AWSCredentialsProvider compositeDelegate;
@@ -120,14 +122,25 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 .collect(Collectors.toList());
         this.shouldDebugCreds = shouldDebugCreds;
         this.stsRegion = stsRegion;
+        BackoffStrategy backoffStrategy = FullJitterBackoffStrategy.builder()
+            .baseDelay(BASE_DELAY)
+            .maxBackoffTime(Duration.ofMillis(maxBackOffTimeMs))
+            .build();
         if (maxRetries > 0) {
-            this.retryPolicy = new SimpleRetryPolicy(
-                    new AndRetryCondition(new RetryOnExceptionsCondition(Collections.singletonList(
-                            SdkClientException.class)), new MaxNumberOfRetriesCondition(maxRetries)),
-                    new PredefinedBackoffStrategies.FullJitterBackoffStrategy(BASE_DELAY, maxBackOffTimeMs));
+            RetryCondition retryCondition = AndRetryCondition.create(
+                RetryOnExceptionsCondition.create(SdkClientException.class),
+                MaxNumberOfRetriesCondition.create(maxRetries)
+            );
+            this.retryPolicy = RetryPolicy.builder()
+                .retryCondition(retryCondition)
+                .backoffStrategy(backoffStrategy)
+                .build();
+
         } else {
-            this.retryPolicy = new SimpleRetryPolicy((c) -> false,
-                    new PredefinedBackoffStrategies.FullJitterBackoffStrategy(BASE_DELAY, maxBackOffTimeMs));
+            this.retryPolicy = RetryPolicy.builder()
+                .retryCondition(RetryCondition.none())
+                .backoffStrategy(backoffStrategy)
+                .build();
         }
     }
 
@@ -157,16 +170,16 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                 try {
                     AWSCredentials credentials = compositeDelegate.getCredentials();
                     if (credentials == null) {
-                        throw new SdkClientException("Composite delegate returned empty credentials.");
+                        throw SdkClientException.create("Composite delegate returned empty credentials.");
                     }
                     return credentials;
-                } catch (SdkBaseException se) {
+                } catch (com.amazonaws.SdkBaseException|SdkException se) {
                     log.warn("Exception loading credentials. Retry Attempts: {}",
                             retryPolicyContext.retriesAttempted(), se);
                     retryPolicyContext = createRetryPolicyContext(se, retryPolicyContext.retriesAttempted());
-                    shouldTry = retryPolicy.shouldRetry(retryPolicyContext);
+                    shouldTry = retryPolicy.retryCondition().shouldRetry(retryPolicyContext);
                     if (shouldTry) {
-                        Thread.sleep(retryPolicy.computeDelayBeforeNextRetry(retryPolicyContext));
+                        Thread.sleep(retryPolicy.backoffStrategy().computeDelayBeforeNextRetry(retryPolicyContext).toMillis());
                         retryPolicyContext = createRetryPolicyContext(retryPolicyContext.exception(),
                                 retryPolicyContext.retriesAttempted() + 1);
                     } else {
@@ -174,7 +187,7 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                     }
                 }
             }
-            throw new SdkClientException(
+            throw SdkClientException.create(
                     "loadCredentialsWithRetry in unexpected location " + retryPolicyContext.totalRequests(),
                     retryPolicyContext.exception());
         } catch (InterruptedException ie) {
@@ -183,9 +196,11 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
         }
     }
 
-    private RetryPolicyContext createRetryPolicyContext(SdkBaseException sdkException, int retriesAttempted) {
-        return RetryPolicyContext.builder().exception(sdkException)
-                .retriesAttempted(retriesAttempted).build();
+    private RetryPolicyContext createRetryPolicyContext(RuntimeException sdkException, int retriesAttempted) {
+        return RetryPolicyContext.builder()
+            .exception(CompatibilityHelper.toSdkException(sdkException))
+            .retriesAttempted(retriesAttempted)
+            .build();
     }
 
     private void logCallerIdentity(AWSCredentials credentials) {
@@ -358,5 +373,4 @@ public class MSKCredentialProvider implements AWSCredentialsProvider, AutoClosea
                     .build();
         }
     }
-
 }
