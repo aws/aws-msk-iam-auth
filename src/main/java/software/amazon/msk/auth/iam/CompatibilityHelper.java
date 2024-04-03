@@ -1,23 +1,33 @@
 package software.amazon.msk.auth.iam;
 
+import com.amazonaws.auth.AWSCredentials;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.auth.BasicSessionCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
 
 public class CompatibilityHelper {
 
   /**
-   * Convert an exception to an SdkException
+   * Convert credentials from v2 to v1
    *
-   * @param e Exception to convert
-   * @return SdkException
+   * @param newCreadientials v2 credentials
+   * @return v1 credentials
    */
-  public static SdkException toSdkException(Exception e) {
-    if (e instanceof com.amazonaws.SdkClientException) {
-      return SdkClientException.create(e.getMessage(), e.getCause());
-    } else if (e instanceof SdkException) {
-      return (SdkException) e;
+  public static AWSCredentials toV1Credentials(AwsCredentials newCreadientials) {
+    if (newCreadientials instanceof AwsSessionCredentials) {
+      return new BasicSessionCredentials(
+          newCreadientials.accessKeyId(),
+          newCreadientials.secretAccessKey(),
+          ((AwsSessionCredentials) newCreadientials).sessionToken()
+      );
     } else {
-      return SdkException.create(e.getMessage(), e);
+      return new BasicAWSCredentials(
+          newCreadientials.accessKeyId(),
+          newCreadientials.secretAccessKey()
+      );
     }
   }
 }

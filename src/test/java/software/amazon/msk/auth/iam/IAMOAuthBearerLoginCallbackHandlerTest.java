@@ -106,7 +106,7 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
                 Collections.emptyMap(), OAuthBearerLoginModule.OAUTHBEARER_MECHANISM, Collections.emptyList());
 
         System.setProperty("aws.accessKeyId", ACCESS_KEY_VALUE);
-        System.setProperty("aws.secretKey", SECRET_KEY_VALUE);
+        System.setProperty("aws.secretAccessKey", SECRET_KEY_VALUE);
         System.setProperty("aws.sessionToken", SESSION_TOKEN);
         System.setProperty("aws.region", TEST_REGION);
 
@@ -127,7 +127,7 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
                 Collections.emptyMap(), OAuthBearerLoginModule.OAUTHBEARER_MECHANISM, Collections.emptyList());
 
         System.setProperty("aws.accessKeyId", ACCESS_KEY_VALUE);
-        System.setProperty("aws.secretKey", SECRET_KEY_VALUE);
+        System.setProperty("aws.secretAccessKey", SECRET_KEY_VALUE);
         System.setProperty("aws.sessionToken", SESSION_TOKEN);
         System.setProperty("aws.region", "us-gov-west-2");
 
@@ -152,7 +152,7 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
                 Collections.singletonMap("awsProfileName", profileName), OAuthBearerLoginModule.OAUTHBEARER_MECHANISM, Collections.emptyList());
 
         System.setProperty("aws.accessKeyId", accessKey);
-        System.setProperty("aws.secretKey", secretKey);
+        System.setProperty("aws.secretAccessKey", secretKey);
         System.setProperty("aws.sessionToken", sessionToken);
         System.setProperty("aws.profile", profileName);
         System.setProperty("aws.region", TEST_REGION);

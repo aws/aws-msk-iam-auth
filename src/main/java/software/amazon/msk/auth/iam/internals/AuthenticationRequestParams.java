@@ -15,7 +15,6 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.regions.Region;
 import com.amazonaws.regions.RegionMetadata;
 import com.amazonaws.partitions.PartitionsLoader;
@@ -26,6 +25,7 @@ import lombok.Getter;
 import lombok.NonNull;
 
 import java.util.Optional;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
 
 /**
  * This class represents the parameters that will be used to generate the Sigv4 signature
@@ -47,7 +47,7 @@ public class AuthenticationRequestParams {
     @NonNull
     private final String host;
     @NonNull
-    private final AWSCredentials awsCredentials;
+    private final AwsCredentials awsCredentials;
     @NonNull
     private final Region region;
     @NonNull
@@ -58,7 +58,7 @@ public class AuthenticationRequestParams {
     }
 
     public static AuthenticationRequestParams create(@NonNull String host,
-            AWSCredentials credentials,
+            AwsCredentials credentials,
             @NonNull String userAgent) throws IllegalArgumentException {
         Region region = Optional.ofNullable(regionMetadata.tryGetRegionByEndpointDnsSuffix(host))
                 .orElseGet(() -> Regions.getCurrentRegion());

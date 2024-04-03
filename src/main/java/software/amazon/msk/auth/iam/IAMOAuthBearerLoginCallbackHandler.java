@@ -37,11 +37,11 @@ import org.slf4j.LoggerFactory;
 
 import com.amazonaws.AmazonWebServiceRequest;
 import com.amazonaws.DefaultRequest;
-import com.amazonaws.auth.AWSCredentials;
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 
 import lombok.NonNull;
+import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.SdkHttpMethod;
@@ -66,7 +66,7 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
 
     private final AWS4SignedPayloadGenerator aws4Signer = new AWS4SignedPayloadGenerator();
 
-    private AWSCredentialsProvider credentialsProvider;
+    private AwsCredentialsProvider credentialsProvider;
     private AwsRegionProvider awsRegionProvider;
     private boolean configured = false;
 
@@ -90,8 +90,8 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
                         .equals(j.getLoginModuleName()))
                 .findFirst();
 
-        credentialsProvider = configEntry.map(c -> (AWSCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
-                .orElse(DefaultAWSCredentialsProviderChain.getInstance());
+        credentialsProvider = configEntry.map(c -> (AwsCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
+                .orElse(DefaultCredentialsProvider.create());
 
         awsRegionProvider = new DefaultAwsRegionProviderChain();
         configured = true;
@@ -136,8 +136,7 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
         if (callback.token() != null) {
             throw new IllegalArgumentException("Callback had a token already");
         }
-        credentialsProvider.refresh();
-        AWSCredentials awsCredentials = credentialsProvider.getCredentials();
+        AwsCredentials awsCredentials = credentialsProvider.resolveCredentials();
 
         // Generate token value i.e. Base64 encoded pre-signed URL string
         String tokenValue = generateTokenValue(awsCredentials, getCurrentRegion());
@@ -152,7 +151,7 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
      * @param region aws region
      * @return a base64 encoded token string
      */
-    private String generateTokenValue(@NonNull final AWSCredentials awsCredentials, @NonNull final Region region) {
+    private String generateTokenValue(@NonNull final AwsCredentials awsCredentials, @NonNull final Region region) {
         final String userAgentValue = UserAgentUtils.getUserAgentValue();
         final AuthenticationRequestParams authenticationRequestParams = AuthenticationRequestParams
                 .create(getHostName(region), awsCredentials, userAgentValue);
