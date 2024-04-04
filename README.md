@@ -46,7 +46,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>2.0.3</version>
+      <version>2.1.0</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -518,6 +518,10 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+
+### Release 2.1.0
+- Upgrade Jackson Databind version
+- Update AWS SDK usages to sdk-2
 
 ### Release 2.0.3
 - Upgrade AWS SKD version
