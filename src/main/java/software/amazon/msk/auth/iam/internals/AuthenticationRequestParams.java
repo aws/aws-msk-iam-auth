@@ -15,19 +15,14 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import static software.amazon.msk.auth.iam.CompatibilityHelper.toV2Region;
-
-import com.amazonaws.regions.RegionMetadata;
-import com.amazonaws.partitions.PartitionsLoader;
-import com.amazonaws.regions.Regions;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NonNull;
 
-import java.util.Optional;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 
 /**
  * This class represents the parameters that will be used to generate the Sigv4 signature
@@ -40,9 +35,6 @@ import software.amazon.awssdk.regions.Region;
 public class AuthenticationRequestParams {
     private static final String VERSION_1 = "2020_10_22";
     private static final String SERVICE_SCOPE = "kafka-cluster";
-    private static RegionMetadata regionMetadata = new RegionMetadata(new PartitionsLoader().build());
-    /* we are not using the RegionMetadataFactory.create() method here as one of its path
-    relies on the LegacyRegionXmlMetadataBuilder which does not implement tryGetRegionByEndpointDnsSuffix */
 
     @NonNull
     private final String version;
@@ -60,13 +52,12 @@ public class AuthenticationRequestParams {
     }
 
     public static AuthenticationRequestParams create(@NonNull String host,
-            AwsCredentials credentials,
-            @NonNull String userAgent) throws IllegalArgumentException {
-        com.amazonaws.regions.Region region = Optional.ofNullable(regionMetadata.tryGetRegionByEndpointDnsSuffix(host))
-                .orElseGet(() -> Regions.getCurrentRegion());
+        AwsCredentials credentials,
+        @NonNull String userAgent) throws IllegalArgumentException {
+        Region region = RegionUtils.extractRegionFromHost(host);
         if (region == null) {
             throw new IllegalArgumentException("Host " + host + " does not belong to a valid region.");
         }
-        return new AuthenticationRequestParams(VERSION_1, host, credentials, toV2Region(region), userAgent);
+        return new AuthenticationRequestParams(VERSION_1, host, credentials, region, userAgent);
     }
 }
