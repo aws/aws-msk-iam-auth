@@ -26,7 +26,6 @@ import software.amazon.awssdk.auth.credentials.AwsCredentials;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static software.amazon.msk.auth.iam.CompatibilityHelper.toV1Region;
 
 public class AuthenticateRequestParamsTest {
     private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
