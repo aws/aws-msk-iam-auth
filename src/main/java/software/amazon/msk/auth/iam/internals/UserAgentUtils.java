@@ -15,14 +15,15 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.util.ClassLoaderHelper;
-import com.amazonaws.util.VersionInfoUtils;
+import java.io.IOException;
+import java.net.URL;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.util.Properties;
 import java.util.StringJoiner;
+import software.amazon.awssdk.core.util.SdkUserAgent;
 
 import static com.amazonaws.util.IOUtils.closeQuietly;
 
@@ -41,7 +42,7 @@ public final class UserAgentUtils {
     private static final String[] AGENT_COMPONENTS = new String[] {
             USER_AGENT_NAME,
             getLibraryVersion(),
-            VersionInfoUtils.getUserAgent()
+            SdkUserAgent.create().userAgent()
     };
 
     private static final String USER_AGENT_STRING = generateUserAgentString(AGENT_COMPONENTS);
@@ -57,8 +58,7 @@ public final class UserAgentUtils {
     private static String getLibraryVersion() {
         String version = "unknown-version";
 
-        InputStream inputStream = ClassLoaderHelper.getResourceAsStream(
-                VERSION_INFO_FILE, true, UserAgentUtils.class);
+        InputStream inputStream = getVersionInfoFileAsStream();
         Properties versionProperties = new Properties();
         try {
             if (inputStream == null) {
@@ -77,5 +77,23 @@ public final class UserAgentUtils {
 
     public static String getUserAgentValue() {
         return USER_AGENT_STRING;
+    }
+
+    private static InputStream getVersionInfoFileAsStream() {
+        URL url = UserAgentUtils.class.getResource(VERSION_INFO_FILE);
+        if (url == null) {
+            ClassLoader loader = Thread.currentThread().getContextClassLoader();
+            if (loader != null) {
+                url = loader.getResource(VERSION_INFO_FILE);
+            }
+        }
+        if (url != null) {
+            try {
+                return url.openStream();
+            } catch (IOException e) {
+                // ignore exception
+            }
+        }
+        return null;
     }
 }

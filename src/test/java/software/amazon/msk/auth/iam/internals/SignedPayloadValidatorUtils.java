@@ -15,7 +15,6 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.auth.internal.SignerConstants;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
@@ -27,6 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -37,12 +37,12 @@ public final class SignedPayloadValidatorUtils {
     private static final String HOST = "host";
     private static final String[] requiredKeys = {VERSION,
             HOST,
-            SignerConstants.X_AMZ_CREDENTIAL.toLowerCase(),
-            SignerConstants.X_AMZ_DATE.toLowerCase(),
-            SignerConstants.X_AMZ_SIGNED_HEADER.toLowerCase(),
-            SignerConstants.X_AMZ_EXPIRES.toLowerCase(),
-            SignerConstants.X_AMZ_SIGNATURE.toLowerCase(),
-            SignerConstants.X_AMZ_ALGORITHM.toLowerCase()};
+            SignerConstant.X_AMZ_CREDENTIAL.toLowerCase(),
+            SignerConstant.X_AMZ_DATE.toLowerCase(),
+            SignerConstant.X_AMZ_SIGNED_HEADERS.toLowerCase(),
+            SignerConstant.X_AMZ_EXPIRES.toLowerCase(),
+            SignerConstant.X_AMZ_SIGNATURE.toLowerCase(),
+            SignerConstant.X_AMZ_ALGORITHM.toLowerCase()};
 
     private static final String ACTION = "action";
     private static final String[] optionalKeys = {
@@ -71,13 +71,13 @@ public final class SignedPayloadValidatorUtils {
         assertEquals("2020_10_22", propertyMap.get(VERSION));
         assertEquals(params.getHost(), propertyMap.get(HOST));
         assertEquals("kafka-cluster:Connect", propertyMap.get(ACTION));
-        assertEquals("host", propertyMap.get(SignerConstants.X_AMZ_SIGNED_HEADER.toLowerCase()));
-        assertEquals(SignerConstants.AWS4_SIGNING_ALGORITHM,
-                propertyMap.get(SignerConstants.X_AMZ_ALGORITHM.toLowerCase()));
-        assertTrue(dateFormat.parse(propertyMap.get(SignerConstants.X_AMZ_DATE.toLowerCase())).toInstant()
+        assertEquals("host", propertyMap.get(SignerConstant.X_AMZ_SIGNED_HEADERS.toLowerCase()));
+        assertEquals(SignerConstant.AWS4_SIGNING_ALGORITHM,
+                propertyMap.get(SignerConstant.X_AMZ_ALGORITHM.toLowerCase()));
+        assertTrue(dateFormat.parse(propertyMap.get(SignerConstant.X_AMZ_DATE.toLowerCase())).toInstant()
                 .isBefore(Instant.now()));
-        assertTrue(Integer.parseInt(propertyMap.get(SignerConstants.X_AMZ_EXPIRES.toLowerCase())) <= 900);
-        String credential = propertyMap.get(SignerConstants.X_AMZ_CREDENTIAL.toLowerCase());
+        assertTrue(Integer.parseInt(propertyMap.get(SignerConstant.X_AMZ_EXPIRES.toLowerCase())) <= 900);
+        String credential = propertyMap.get(SignerConstant.X_AMZ_CREDENTIAL.toLowerCase());
         assertNotNull(credential);
         String[] credentialArray = credential.split("/");
         assertEquals(5, credentialArray.length);

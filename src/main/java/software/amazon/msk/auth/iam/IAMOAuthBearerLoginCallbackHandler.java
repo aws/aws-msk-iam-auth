@@ -35,16 +35,12 @@ import org.apache.kafka.common.security.oauthbearer.OAuthBearerTokenCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.amazonaws.AmazonWebServiceRequest;
-import com.amazonaws.DefaultRequest;
-
 import lombok.NonNull;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
-import software.amazon.awssdk.http.SdkHttpMethod;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.regions.providers.AwsRegionProvider;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
@@ -61,7 +57,6 @@ import software.amazon.msk.auth.iam.internals.UserAgentUtils;
  */
 public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(IAMOAuthBearerLoginCallbackHandler.class);
-    private static final String PROTOCOL = "https";
     private static final String USER_AGENT_KEY = "User-Agent";
 
     private final AWS4SignedPayloadGenerator aws4Signer = new AWS4SignedPayloadGenerator();
@@ -156,12 +151,10 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
         final AuthenticationRequestParams authenticationRequestParams = AuthenticationRequestParams
                 .create(getHostName(region), awsCredentials, userAgentValue);
 
-        final DefaultRequest request = aws4Signer.presignRequest(authenticationRequestParams);
-        request.addParameter(USER_AGENT_KEY, userAgentValue);
-
-        final SdkHttpFullRequest fullRequest = convertToSdkHttpFullRequest(request);
-        String signedUrl = fullRequest.getUri()
-                .toString();
+        final SdkHttpFullRequest.Builder requestBuilder = aws4Signer.presignRequest(authenticationRequestParams).toBuilder();
+        requestBuilder.appendRawQueryParameter(USER_AGENT_KEY, userAgentValue);
+        final SdkHttpFullRequest fullRequest = requestBuilder.build();
+        String signedUrl = fullRequest.getUri().toString();
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(signedUrl.getBytes(StandardCharsets.UTF_8));
@@ -203,31 +196,6 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
 
     static String debugClassString(Class<?> clazz) {
         return "class: " + clazz.getName() + " classloader: " + clazz.getClassLoader().toString();
-    }
-
-    /**
-     * Converts the DefaultRequest object to a http request object from aws sdk.
-     *
-     * @param defaultRequest pre-signed request object
-     * @return
-     */
-    private SdkHttpFullRequest convertToSdkHttpFullRequest(DefaultRequest<? extends AmazonWebServiceRequest> defaultRequest) {
-        final SdkHttpMethod httpMethod = SdkHttpMethod.valueOf(defaultRequest.getHttpMethod().name());
-        String endpoint = defaultRequest.getEndpoint().toString();
-
-        final SdkHttpFullRequest.Builder requestBuilder = SdkHttpFullRequest.builder()
-                .method(httpMethod)
-                .protocol(PROTOCOL) // Replace Protocol with 'https://' since 'kafka://' fails for not being recognized as a valid scheme by builder
-                .encodedPath(defaultRequest.getResourcePath())
-                .host(endpoint.substring(endpoint.indexOf("://") + 3)); // Extract hostname e.g. 'kafka://kafka.us-west-1.amazonaws.com' => 'kafka.us-west-1.amazonaws.com'
-
-        defaultRequest.getHeaders()
-                .forEach((key, value) -> requestBuilder.appendHeader(key, value));
-
-        defaultRequest.getParameters()
-                .forEach((key, value) -> requestBuilder.appendRawQueryParameter(key, value.get(0)));
-
-        return requestBuilder.build();
     }
 }
 
