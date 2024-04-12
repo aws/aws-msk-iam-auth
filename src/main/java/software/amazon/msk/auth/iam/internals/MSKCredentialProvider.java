@@ -285,11 +285,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .build();
 
             try {
-                Endpoint endpoint = StsEndpointProvider.defaultProvider()
+                return StsEndpointProvider.defaultProvider()
                     .resolveEndpoint(params)
-                    .get();
-
-                return endpoint.url();
+                    .get()
+                    .url();
             } catch (InterruptedException | ExecutionException e) {
                 throw new RuntimeException(e);
             }
