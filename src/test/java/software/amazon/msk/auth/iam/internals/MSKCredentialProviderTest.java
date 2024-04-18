@@ -42,6 +42,7 @@ import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsPr
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.profiles.ProfileFile;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
@@ -319,8 +320,8 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
-                URI endpointConfiguration = buildEndpointConfiguration(stsRegion);
-                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
+                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
+                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
@@ -356,8 +357,8 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
-                URI endpointConfiguration = buildEndpointConfiguration(stsRegion);
-                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
+                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
+                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };

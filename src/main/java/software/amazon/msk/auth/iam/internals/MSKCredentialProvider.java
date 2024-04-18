@@ -17,6 +17,7 @@ package software.amazon.msk.auth.iam.internals;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.concurrent.ExecutionException;
 import lombok.AccessLevel;
 import lombok.Getter;
 
@@ -49,10 +50,13 @@ import software.amazon.awssdk.core.retry.conditions.AndRetryCondition;
 import software.amazon.awssdk.core.retry.conditions.MaxNumberOfRetriesCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
+import software.amazon.awssdk.endpoints.Endpoint;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
+import software.amazon.awssdk.services.sts.endpoints.StsEndpointParams;
+import software.amazon.awssdk.services.sts.endpoints.StsEndpointProvider;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
@@ -275,19 +279,27 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
         }
 
-        public URI buildEndpointConfiguration(String stsRegion){
-            return URI.create("sts." + stsRegion + ".amazonaws.com");
+        public URI buildEndpointConfiguration(Region stsRegion) {
+            StsEndpointParams params = StsEndpointParams.builder()
+                .region(stsRegion)
+                .build();
+
+            try {
+                return StsEndpointProvider.defaultProvider()
+                    .resolveEndpoint(params)
+                    .get()
+                    .url();
+            } catch (InterruptedException | ExecutionException e) {
+                throw new RuntimeException(e);
+            }
         }
 
-        private StsClientBuilder getStsClientBuilder(String stsRegion) {
-            if (GLOBAL_REGION.equals(stsRegion)) {
-                return StsClient.builder()
-                    .region(software.amazon.awssdk.regions.Region.AWS_GLOBAL);
-            } else {
-                return StsClient.builder()
-                    .region(software.amazon.awssdk.regions.Region.of(stsRegion))
-                    .endpointOverride(buildEndpointConfiguration(stsRegion));
+        private StsClientBuilder getStsClientBuilder(Region stsRegion) {
+            StsClientBuilder builder = StsClient.builder().region(stsRegion);
+            if (stsRegion != Region.AWS_GLOBAL) {
+                builder.endpointOverride(buildEndpointConfiguration(stsRegion));
             }
+            return builder;
         }
 
         private Optional<ProfileCredentialsProvider> getProfileProvider() {
@@ -339,7 +351,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .roleArn(roleArn)
                 .roleSessionName(sessionName)
                 .build();
-            StsClient stsClient = getStsClientBuilder(stsRegion)
+            StsClient stsClient = getStsClientBuilder(Region.of(stsRegion))
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
@@ -355,7 +367,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .roleArn(roleArn)
                 .roleSessionName(sessionName)
                 .build();
-            StsClient stsClient = getStsClientBuilder(stsRegion)
+            StsClient stsClient = getStsClientBuilder(Region.of(stsRegion))
                 .credentialsProvider(credentials)
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
@@ -375,7 +387,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .roleSessionName(sessionName)
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
-                .stsClient(getStsClientBuilder(stsRegion).build())
+                .stsClient(getStsClientBuilder(Region.of(stsRegion)).build())
                 .refreshRequest(roleRequest)
                 .build();
         }
