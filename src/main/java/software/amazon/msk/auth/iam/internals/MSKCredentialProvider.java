@@ -36,6 +36,7 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.ContainerCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
@@ -157,7 +158,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             SystemPropertyCredentialsProvider.create(),
             WebIdentityTokenFileCredentialsProvider.create(),
             ProfileCredentialsProvider.create(),
-            ContainerCredentialsProvider.builder().build()
+            ContainerCredentialsProvider.builder().build(),
+            InstanceProfileCredentialsProvider.create()
         );
     }
 
