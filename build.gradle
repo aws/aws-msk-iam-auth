@@ -43,7 +43,6 @@ dependencies {
     // aws sdk imports.
     implementation(platform('com.amazonaws:aws-java-sdk-bom:1.12.638'))
     implementation('com.amazonaws:aws-java-sdk-core')
-    implementation('com.amazonaws:aws-java-sdk-sts')
     implementation(platform('software.amazon.awssdk:bom:2.23.3'))
     implementation('software.amazon.awssdk:auth')
     implementation('software.amazon.awssdk:sso')

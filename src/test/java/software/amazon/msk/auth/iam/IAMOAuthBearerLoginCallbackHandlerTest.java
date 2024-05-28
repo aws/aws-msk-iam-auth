@@ -40,8 +40,7 @@ import org.apache.kafka.common.security.oauthbearer.OAuthBearerTokenCallback;
 import org.apache.kafka.common.security.scram.ScramCredentialCallback;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-
-import com.amazonaws.auth.internal.SignerConstants;
+import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -196,21 +195,21 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
         Map<String, String> paramMap = params.stream()
                 .collect(Collectors.toMap(NameValuePair::getName, NameValuePair::getValue));
         Assertions.assertEquals("kafka-cluster:Connect", paramMap.get("Action"));
-        Assertions.assertEquals(SignerConstants.AWS4_SIGNING_ALGORITHM, paramMap.get(SignerConstants.X_AMZ_ALGORITHM));
-        final Integer expirySeconds = Integer.parseInt(paramMap.get(SignerConstants.X_AMZ_EXPIRES));
+        Assertions.assertEquals(SignerConstant.AWS4_SIGNING_ALGORITHM, paramMap.get(SignerConstant.X_AMZ_ALGORITHM));
+        final Integer expirySeconds = Integer.parseInt(paramMap.get(SignerConstant.X_AMZ_EXPIRES));
         Assertions.assertTrue(expirySeconds <= 900);
-        Assertions.assertTrue(token.lifetimeMs() <= System.currentTimeMillis() + Integer.parseInt(paramMap.get(SignerConstants.X_AMZ_EXPIRES)) * 1000);
-        Assertions.assertEquals(sessionToken, paramMap.get(SignerConstants.X_AMZ_SECURITY_TOKEN));
-        Assertions.assertEquals("host", paramMap.get(SignerConstants.X_AMZ_SIGNED_HEADER));
-        String credential = paramMap.get(SignerConstants.X_AMZ_CREDENTIAL);
+        Assertions.assertTrue(token.lifetimeMs() <= System.currentTimeMillis() + Integer.parseInt(paramMap.get(SignerConstant.X_AMZ_EXPIRES)) * 1000);
+        Assertions.assertEquals(sessionToken, paramMap.get(SignerConstant.X_AMZ_SECURITY_TOKEN));
+        Assertions.assertEquals("host", paramMap.get(SignerConstant.X_AMZ_SIGNED_HEADERS));
+        String credential = paramMap.get(SignerConstant.X_AMZ_CREDENTIAL);
         Assertions.assertNotNull(credential);
         String[] credentialArray = credential.split("/");
         Assertions.assertEquals(5, credentialArray.length);
         Assertions.assertEquals(accessKey, credentialArray[0]);
         Assertions.assertEquals("kafka-cluster", credentialArray[3]);
-        Assertions.assertEquals(SignerConstants.AWS4_TERMINATOR, credentialArray[4]);
+        Assertions.assertEquals(SignerConstant.AWS4_TERMINATOR, credentialArray[4]);
         DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
-        final LocalDateTime signedDate = LocalDateTime.parse(paramMap.get(SignerConstants.X_AMZ_DATE), dateFormat);
+        final LocalDateTime signedDate = LocalDateTime.parse(paramMap.get(SignerConstant.X_AMZ_DATE), dateFormat);
         long signedDateEpochMillis = signedDate.toInstant(ZoneOffset.UTC)
                 .toEpochMilli();
         Assertions.assertTrue(signedDateEpochMillis <= Instant.now()

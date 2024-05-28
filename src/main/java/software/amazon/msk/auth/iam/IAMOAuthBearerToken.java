@@ -32,8 +32,7 @@ import org.apache.http.NameValuePair;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.kafka.common.security.oauthbearer.OAuthBearerToken;
 
-import com.amazonaws.auth.internal.SignerConstants;
-
+import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
 import software.amazon.awssdk.utils.StringUtils;
 
 /**
@@ -65,9 +64,9 @@ public class IAMOAuthBearerToken implements OAuthBearerToken {
         List<NameValuePair> params = URLEncodedUtils.parse(uri, StandardCharsets.UTF_8);
         Map<String, String> paramMap = params.stream()
                 .collect(Collectors.toMap(NameValuePair::getName, NameValuePair::getValue));
-        int lifeTimeSeconds = Integer.parseInt(paramMap.get(SignerConstants.X_AMZ_EXPIRES));
+        int lifeTimeSeconds = Integer.parseInt(paramMap.get(SignerConstant.X_AMZ_EXPIRES));
         final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
-        final LocalDateTime signedDate = LocalDateTime.parse(paramMap.get(SignerConstants.X_AMZ_DATE), dateFormat);
+        final LocalDateTime signedDate = LocalDateTime.parse(paramMap.get(SignerConstant.X_AMZ_DATE), dateFormat);
         long signedDateEpochMillis = signedDate.toInstant(ZoneOffset.UTC)
                 .toEpochMilli();
         this.startTimeMs = signedDateEpochMillis;

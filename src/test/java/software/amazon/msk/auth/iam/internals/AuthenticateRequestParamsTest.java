@@ -15,7 +15,7 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.amazonaws.regions.Region;
+import software.amazon.awssdk.regions.Region;
 import com.amazonaws.regions.Regions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,7 +34,7 @@ public class AuthenticateRequestParamsTest {
     private static final String ACCESS_KEY = "ACCESS_KEY";
     private static final String SECRET_KEY = "SECRET_KEY";
     private static final String USER_AGENT = "USER_AGENT";
-    private static final Region TEST_EC2_REGION = Region.getRegion(Regions.US_WEST_1);
+    private static final Region TEST_EC2_REGION = Region.US_WEST_1;
 
     @BeforeEach
     public void setup() {
@@ -46,7 +46,7 @@ public class AuthenticateRequestParamsTest {
         AuthenticationRequestParams params = AuthenticationRequestParams
                 .create(VALID_HOSTNAME, credentials, USER_AGENT);
 
-        assertEquals("us-west-2", params.getRegion().getName());
+        assertEquals("us-west-2", params.getRegion().id());
         assertEquals("kafka-cluster", params.getServiceScope());
         assertEquals(USER_AGENT, params.getUserAgent());
         assertEquals(VALID_HOSTNAME, params.getHost());
@@ -66,9 +66,10 @@ public class AuthenticateRequestParamsTest {
     @Test
     public void testInvalidHostInEC2() {
         try (MockedStatic<Regions> regionsMockedStatic = Mockito.mockStatic(Regions.class)) {
-            regionsMockedStatic.when(Regions::getCurrentRegion).thenReturn(TEST_EC2_REGION);
+            regionsMockedStatic.when(Regions::getCurrentRegion)
+                .thenReturn(com.amazonaws.regions.Region.getRegion(Regions.US_WEST_1));
             AuthenticationRequestParams params = AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT);
-            assertEquals(TEST_EC2_REGION, params.getRegion());
+            assertEquals(Region.US_WEST_1, params.getRegion());
         }
     }
 
