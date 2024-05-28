@@ -36,12 +36,14 @@ import software.amazon.awssdk.auth.credentials.AwsCredentialsProviderChain;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.ContainerCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.profiles.ProfileFile;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
@@ -131,7 +133,8 @@ public class MSKCredentialProviderTest {
                         SystemPropertyCredentialsProvider.create(),
                         WebIdentityTokenFileCredentialsProvider.create(),
                         ProfileCredentialsProvider.builder().profileFile(profileFile).build(),
-                        ContainerCredentialsProvider.builder().build()
+                        ContainerCredentialsProvider.builder().build(),
+                        InstanceProfileCredentialsProvider.create()
                     );
                 }
             };
@@ -244,18 +247,53 @@ public class MSKCredentialProviderTest {
     }
 
     @Test
-    public void testEc2CredsWithDebugCredsNoAccessToSts_Succeed() {
+    public void testEcsCredsWithDebugCredsNoAccessToSts_Succeed() {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put(AWS_DEBUG_CREDS_NAME, "true");
 
 
-        ContainerCredentialsProvider mockEc2CredsProvider = Mockito.mock(ContainerCredentialsProvider.class);
-        Mockito.when(mockEc2CredsProvider.resolveIdentity())
+        ContainerCredentialsProvider mockEcsCredsProvider = Mockito.mock(ContainerCredentialsProvider.class);
+        Mockito.when(mockEcsCredsProvider.resolveIdentity())
                 .thenAnswer(i -> CompletableFuture.completedFuture(AwsBasicCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO)));
 
         StsClient mockSts = Mockito.mock(StsClient.class);
         Mockito.when(mockSts.getCallerIdentity())
                 .thenThrow(SdkClientException.create("TEST TEST"));
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEcsCredsProvider;
+            }
+
+            StsClient getStsClientForDebuggingCreds(AwsCredentials credentials) {
+                return mockSts;
+            }
+        };
+        assertTrue(provider.getShouldDebugCreds());
+
+        AwsCredentials credentials = provider.resolveCredentials();
+
+        validateBasicCredentialsTwo(credentials);
+
+        provider.close();
+        Mockito.verify(mockSts, times(1)).getCallerIdentity();
+        Mockito.verify(mockEcsCredsProvider, times(1)).resolveIdentity();
+        Mockito.verifyNoMoreInteractions(mockEcsCredsProvider);
+    }
+
+    @Test
+    public void testEc2CredsWithDebugCredsNoAccessToSts_Succeed() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_DEBUG_CREDS_NAME, "true");
+
+
+        InstanceProfileCredentialsProvider mockEc2CredsProvider = Mockito.mock(InstanceProfileCredentialsProvider.class);
+        Mockito.when(mockEc2CredsProvider.resolveIdentity())
+            .thenAnswer(i -> CompletableFuture.completedFuture(AwsBasicCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO)));
+
+        StsClient mockSts = Mockito.mock(StsClient.class);
+        Mockito.when(mockSts.getCallerIdentity())
+            .thenThrow(SdkClientException.create("TEST TEST"));
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
             protected AwsCredentialsProvider getDefaultProvider() {
@@ -319,8 +357,8 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
-                URI endpointConfiguration = buildEndpointConfiguration(stsRegion);
-                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
+                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
+                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
@@ -356,8 +394,8 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
-                URI endpointConfiguration = buildEndpointConfiguration(stsRegion);
-                assertEquals("sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
+                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
+                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
@@ -459,7 +497,7 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "5");
 
-        AwsCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+        AwsCredentialsProvider mockEc2CredsProvider = setupMockEc2DefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
             protected AwsCredentialsProvider getDefaultProvider() {
@@ -480,7 +518,7 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "0");
 
-        AwsCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+        AwsCredentialsProvider mockEc2CredsProvider = setupMockEc2DefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
             protected AwsCredentialsProvider getDefaultProvider() {
@@ -499,7 +537,7 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "5");
 
-        AwsCredentialsProvider mockEc2CredsProvider = setupMockDefaultProviderWithRetriableExceptions(numExceptions);
+        AwsCredentialsProvider mockEc2CredsProvider = setupMockEc2DefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
             protected AwsCredentialsProvider getDefaultProvider() {
@@ -515,6 +553,70 @@ public class MSKCredentialProviderTest {
         provider.close();
         Mockito.verify(mockEc2CredsProvider, times(numExceptions + 1)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
+    }
+
+    @Test
+    public void testEcsCredsWithSixRetriableErrorsCustomRetry_ThrowsException() {
+        int numExceptions = 6;
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put("awsMaxRetries", "5");
+
+        AwsCredentialsProvider mockEcsCredsProvider = setupMockEcsDefaultProviderWithRetriableExceptions(numExceptions);
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEcsCredsProvider;
+            }
+        };
+        assertFalse(provider.getShouldDebugCreds());
+
+        assertThrows(SdkClientException.class, () -> provider.resolveCredentials());
+
+        Mockito.verify(mockEcsCredsProvider, times(numExceptions)).resolveIdentity();
+        Mockito.verifyNoMoreInteractions(mockEcsCredsProvider);
+    }
+
+    @Test
+    public void testEcsCredsWithOnrRetriableErrorsCustomZeroRetry_ThrowsException() {
+        int numExceptions = 1;
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put("awsMaxRetries", "0");
+
+        AwsCredentialsProvider mockEcsCredsProvider = setupMockEcsDefaultProviderWithRetriableExceptions(numExceptions);
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEcsCredsProvider;
+            }
+        };
+        assertFalse(provider.getShouldDebugCreds());
+
+        assertThrows(SdkClientException.class, () -> provider.resolveCredentials());
+
+        Mockito.verify(mockEcsCredsProvider, times(numExceptions)).resolveIdentity();
+        Mockito.verifyNoMoreInteractions(mockEcsCredsProvider);
+    }
+
+    private void testEcsCredsWithRetriableErrorsCustomRetry(int numExceptions) {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put("awsMaxRetries", "5");
+
+        AwsCredentialsProvider mockEcsCredsProvider = setupMockEcsDefaultProviderWithRetriableExceptions(numExceptions);
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return mockEcsCredsProvider;
+            }
+        };
+        assertFalse(provider.getShouldDebugCreds());
+
+        AwsCredentials credentials = provider.resolveCredentials();
+
+        validateBasicCredentialsTwo(credentials);
+
+        provider.close();
+        Mockito.verify(mockEcsCredsProvider, times(numExceptions + 1)).resolveIdentity();
+        Mockito.verifyNoMoreInteractions(mockEcsCredsProvider);
     }
 
     private void testRoleCredsWithRetriableErrors(int numExceptions) {
@@ -607,13 +709,23 @@ public class MSKCredentialProviderTest {
                 .collect(Collectors.toList()).toArray(new SdkException[numErrors]);
     }
 
-    private AwsCredentialsProvider setupMockDefaultProviderWithRetriableExceptions(int numErrors) {
+    private AwsCredentialsProvider setupMockEcsDefaultProviderWithRetriableExceptions(int numErrors) {
         SdkException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
-        ContainerCredentialsProvider mockEc2Provider = Mockito.mock(ContainerCredentialsProvider.class);
+        ContainerCredentialsProvider mockEcsProvider = Mockito.mock(ContainerCredentialsProvider.class);
 
-        Mockito.when(mockEc2Provider.resolveIdentity())
+        Mockito.when(mockEcsProvider.resolveIdentity())
                 .thenThrow(exceptionsToThrow)
                 .thenAnswer(i -> CompletableFuture.completedFuture(AwsBasicCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO)));
+        return mockEcsProvider;
+    }
+
+    private AwsCredentialsProvider setupMockEc2DefaultProviderWithRetriableExceptions(int numErrors) {
+        SdkException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
+        InstanceProfileCredentialsProvider mockEc2Provider = Mockito.mock(InstanceProfileCredentialsProvider.class);
+
+        Mockito.when(mockEc2Provider.resolveIdentity())
+            .thenThrow(exceptionsToThrow)
+            .thenAnswer(i -> CompletableFuture.completedFuture(AwsBasicCredentials.create(ACCESS_KEY_VALUE_TWO, SECRET_KEY_VALUE_TWO)));
         return mockEc2Provider;
     }
 
