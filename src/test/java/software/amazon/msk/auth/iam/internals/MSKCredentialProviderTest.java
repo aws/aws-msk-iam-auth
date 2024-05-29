@@ -74,6 +74,8 @@ public class MSKCredentialProviderTest {
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_PROFILE_NAME = "awsProfileName";
     private static final String AWS_DEBUG_CREDS_NAME = "awsDebugCreds";
+    private static final String HEADER_X_AMZ_SOURCE_ACCOUNT = "x-amz-source-account";
+    private static final String HEADER_X_AMZ_SOURCE_ARN = "x-amz-source-arn";
 
     /**
      * If no options are passed in it should use the default credentials provider
@@ -279,6 +281,30 @@ public class MSKCredentialProviderTest {
         Mockito.verify(mockSts, times(1)).getCallerIdentity();
         Mockito.verify(mockEcsCredsProvider, times(1)).resolveIdentity();
         Mockito.verifyNoMoreInteractions(mockEcsCredsProvider);
+    }
+
+    @Test
+    public void testWithConfusedDeputyParameters() {
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+        optionsMap.put(HEADER_X_AMZ_SOURCE_ACCOUNT, "ACCT");
+        optionsMap.put(HEADER_X_AMZ_SOURCE_ARN, "ARN");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = getProviderBuilder(mockStsRoleProvider, optionsMap,
+                "aws-msk-iam-auth");
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
+
+        AwsCredentials credentials = provider.resolveCredentials();
+        validateBasicSessionCredentials(credentials);
+
+        provider.close();
+        Mockito.verify(mockStsRoleProvider, times(1)).close();
     }
 
     @Test
