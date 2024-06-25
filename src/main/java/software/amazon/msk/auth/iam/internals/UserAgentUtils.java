@@ -25,8 +25,6 @@ import java.util.Properties;
 import java.util.StringJoiner;
 import software.amazon.awssdk.core.util.SdkUserAgent;
 
-import static com.amazonaws.util.IOUtils.closeQuietly;
-
 /**
  * This class is used to generate the user agent for the authentication request.
  */
@@ -58,19 +56,16 @@ public final class UserAgentUtils {
     private static String getLibraryVersion() {
         String version = "unknown-version";
 
-        InputStream inputStream = getVersionInfoFileAsStream();
-        Properties versionProperties = new Properties();
-        try {
+        try (InputStream inputStream = getVersionInfoFileAsStream()) {
             if (inputStream == null) {
                 log.info("Unable to load version information for msk iam auth plugin");
             } else {
+                Properties versionProperties = new Properties();
                 versionProperties.load(inputStream);
                 version = versionProperties.getProperty("version");
             }
         } catch (Exception e) {
             log.info("Unable to load version information for the running SDK: " + e.getMessage());
-        } finally {
-            closeQuietly(inputStream, null);
         }
         return version;
     }

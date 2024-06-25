@@ -27,13 +27,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.kafka.common.security.oauthbearer.OAuthBearerToken;
 
 import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
 import software.amazon.awssdk.utils.StringUtils;
+import software.amazon.msk.auth.iam.internals.utils.URIUtils;
 
 /**
  * Implements the contract provided by OAuthBearerToken interface
@@ -61,15 +59,12 @@ public class IAMOAuthBearerToken implements OAuthBearerToken {
         byte[] decodedBytes = Base64.getUrlDecoder().decode(tokenBytes);
         final String decodedPresignedUrl = new String(decodedBytes, StandardCharsets.UTF_8);
         final URI uri = new URI(decodedPresignedUrl);
-        List<NameValuePair> params = URLEncodedUtils.parse(uri, StandardCharsets.UTF_8);
-        Map<String, String> paramMap = params.stream()
-                .collect(Collectors.toMap(NameValuePair::getName, NameValuePair::getValue));
-        int lifeTimeSeconds = Integer.parseInt(paramMap.get(SignerConstant.X_AMZ_EXPIRES));
+
+        Map<String, List<String>> params = URIUtils.parseQueryParams(uri);
+        int lifeTimeSeconds = Integer.parseInt(params.get(SignerConstant.X_AMZ_EXPIRES).get(0));
         final DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
-        final LocalDateTime signedDate = LocalDateTime.parse(paramMap.get(SignerConstant.X_AMZ_DATE), dateFormat);
-        long signedDateEpochMillis = signedDate.toInstant(ZoneOffset.UTC)
-                .toEpochMilli();
-        this.startTimeMs = signedDateEpochMillis;
+        final LocalDateTime signedDate = LocalDateTime.parse(params.get(SignerConstant.X_AMZ_DATE).get(0), dateFormat);
+        this.startTimeMs = signedDate.toInstant(ZoneOffset.UTC).toEpochMilli();
         this.lifetimeMs = this.startTimeMs + (lifeTimeSeconds * 1000L);
     }
 

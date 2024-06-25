@@ -15,14 +15,14 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import software.amazon.awssdk.regions.Region;
-import com.amazonaws.regions.Regions;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
+import software.amazon.awssdk.regions.Region;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,7 +34,6 @@ public class AuthenticateRequestParamsTest {
     private static final String ACCESS_KEY = "ACCESS_KEY";
     private static final String SECRET_KEY = "SECRET_KEY";
     private static final String USER_AGENT = "USER_AGENT";
-    private static final Region TEST_EC2_REGION = Region.US_WEST_1;
 
     @BeforeEach
     public void setup() {
@@ -56,21 +55,25 @@ public class AuthenticateRequestParamsTest {
 
     @Test
     public void testInvalidHost() {
-        try (MockedStatic<Regions> regionsMockedStatic = Mockito.mockStatic(Regions.class)) {
-            regionsMockedStatic.when(Regions::getCurrentRegion).thenReturn(null);
+        try(MockedStatic<RegionUtils> mockStatic = Mockito.mockStatic(RegionUtils.class)) {
+            mockStatic
+                .when(() -> RegionUtils.extractRegionFromHost(HOSTNAME_NO_REGION))
+                .thenReturn(null);
+
             assertThrows(IllegalArgumentException.class,
-                    () -> AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT));
+                () -> AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT));
         }
     }
 
     @Test
     public void testInvalidHostInEC2() {
-        try (MockedStatic<Regions> regionsMockedStatic = Mockito.mockStatic(Regions.class)) {
-            regionsMockedStatic.when(Regions::getCurrentRegion)
-                .thenReturn(com.amazonaws.regions.Region.getRegion(Regions.US_WEST_1));
+        try(MockedStatic<RegionUtils> mockStatic = Mockito.mockStatic(RegionUtils.class)) {
+            mockStatic
+                .when(() -> RegionUtils.extractRegionFromHost(HOSTNAME_NO_REGION))
+                .thenReturn(Region.US_WEST_1);
+
             AuthenticationRequestParams params = AuthenticationRequestParams.create(HOSTNAME_NO_REGION, credentials, USER_AGENT);
             assertEquals(Region.US_WEST_1, params.getRegion());
         }
     }
-
 }

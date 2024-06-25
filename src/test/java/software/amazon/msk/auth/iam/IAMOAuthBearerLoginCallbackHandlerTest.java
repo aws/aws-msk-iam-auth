@@ -29,11 +29,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.UnsupportedCallbackException;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule;
 import org.apache.kafka.common.security.oauthbearer.OAuthBearerToken;
 import org.apache.kafka.common.security.oauthbearer.OAuthBearerTokenCallback;
@@ -41,6 +38,7 @@ import org.apache.kafka.common.security.scram.ScramCredentialCallback;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
+import software.amazon.msk.auth.iam.internals.utils.URIUtils;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -191,17 +189,15 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
         Assertions.assertEquals(String.format("kafka.%s.amazonaws.com", region), uri.getHost());
         Assertions.assertEquals("https", uri.getScheme());
 
-        List<NameValuePair> params = URLEncodedUtils.parse(uri, StandardCharsets.UTF_8);
-        Map<String, String> paramMap = params.stream()
-                .collect(Collectors.toMap(NameValuePair::getName, NameValuePair::getValue));
-        Assertions.assertEquals("kafka-cluster:Connect", paramMap.get("Action"));
-        Assertions.assertEquals(SignerConstant.AWS4_SIGNING_ALGORITHM, paramMap.get(SignerConstant.X_AMZ_ALGORITHM));
-        final Integer expirySeconds = Integer.parseInt(paramMap.get(SignerConstant.X_AMZ_EXPIRES));
+        Map<String, List<String>> params = URIUtils.parseQueryParams(uri);
+        Assertions.assertEquals("kafka-cluster:Connect", params.get("Action").get(0));
+        Assertions.assertEquals(SignerConstant.AWS4_SIGNING_ALGORITHM, params.get(SignerConstant.X_AMZ_ALGORITHM).get(0));
+        final Integer expirySeconds = Integer.parseInt(params.get(SignerConstant.X_AMZ_EXPIRES).get(0));
         Assertions.assertTrue(expirySeconds <= 900);
-        Assertions.assertTrue(token.lifetimeMs() <= System.currentTimeMillis() + Integer.parseInt(paramMap.get(SignerConstant.X_AMZ_EXPIRES)) * 1000);
-        Assertions.assertEquals(sessionToken, paramMap.get(SignerConstant.X_AMZ_SECURITY_TOKEN));
-        Assertions.assertEquals("host", paramMap.get(SignerConstant.X_AMZ_SIGNED_HEADERS));
-        String credential = paramMap.get(SignerConstant.X_AMZ_CREDENTIAL);
+        Assertions.assertTrue(token.lifetimeMs() <= System.currentTimeMillis() + Integer.parseInt(params.get(SignerConstant.X_AMZ_EXPIRES).get(0)) * 1000);
+        Assertions.assertEquals(sessionToken, params.get(SignerConstant.X_AMZ_SECURITY_TOKEN).get(0));
+        Assertions.assertEquals("host", params.get(SignerConstant.X_AMZ_SIGNED_HEADERS).get(0));
+        String credential = params.get(SignerConstant.X_AMZ_CREDENTIAL).get(0);
         Assertions.assertNotNull(credential);
         String[] credentialArray = credential.split("/");
         Assertions.assertEquals(5, credentialArray.length);
@@ -209,14 +205,14 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
         Assertions.assertEquals("kafka-cluster", credentialArray[3]);
         Assertions.assertEquals(SignerConstant.AWS4_TERMINATOR, credentialArray[4]);
         DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'");
-        final LocalDateTime signedDate = LocalDateTime.parse(paramMap.get(SignerConstant.X_AMZ_DATE), dateFormat);
+        final LocalDateTime signedDate = LocalDateTime.parse(params.get(SignerConstant.X_AMZ_DATE).get(0), dateFormat);
         long signedDateEpochMillis = signedDate.toInstant(ZoneOffset.UTC)
                 .toEpochMilli();
         Assertions.assertTrue(signedDateEpochMillis <= Instant.now()
                 .toEpochMilli());
         Assertions.assertEquals(signedDateEpochMillis, token.startTimeMs());
         Assertions.assertEquals(signedDateEpochMillis + expirySeconds * 1000, token.lifetimeMs());
-        String userAgent = paramMap.get("User-Agent");
+        String userAgent = params.get("User-Agent").get(0);
         Assertions.assertNotNull(userAgent);
         Assertions.assertTrue(userAgent.startsWith("aws-msk-iam-auth"));
     }
