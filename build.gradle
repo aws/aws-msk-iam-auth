@@ -41,10 +41,10 @@ group "software.amazon.msk"
 dependencies {
     compileOnly('org.apache.kafka:kafka-clients:2.8.1')
     // aws sdk imports.
-    implementation(platform('software.amazon.awssdk:bom:2.23.3'))
+    implementation(platform('software.amazon.awssdk:bom:2.26.8'))
     implementation('software.amazon.awssdk:auth')
     implementation('software.amazon.awssdk:sso')
-    implementation("software.amazon.awssdk:ssooidc")
+    implementation('software.amazon.awssdk:ssooidc')
     implementation('software.amazon.awssdk:sts')
     implementation('com.fasterxml.jackson.core:jackson-databind:2.14.1')
     implementation('org.slf4j:slf4j-api:1.7.25')
@@ -52,13 +52,14 @@ dependencies {
     runtimeOnly('software.amazon.awssdk:apache-client')
 
     //test dependencies
-    testImplementation('org.apache.kafka:kafka-clients:2.2.1',
-            'org.junit.jupiter:junit-jupiter-api:5.7.0',
-            'org.apache.commons:commons-lang3:3.11',
-            'org.mockito:mockito-inline:3.6.0')
-    testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0',
-            'org.apache.logging.log4j:log4j-core:2.17.1',
-            'org.apache.logging.log4j:log4j-slf4j-impl:2.17.1')
+    testImplementation('org.apache.kafka:kafka-clients:2.2.1')
+    testImplementation('org.junit.jupiter:junit-jupiter-api:5.7.0')
+    testImplementation('org.apache.commons:commons-lang3:3.11')
+    testImplementation('org.mockito:mockito-inline:3.6.0')
+
+    testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0')
+    testRuntimeOnly('org.apache.logging.log4j:log4j-core:2.17.1')
+    testRuntimeOnly('org.apache.logging.log4j:log4j-slf4j-impl:2.17.1')
 }
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
@@ -172,5 +173,3 @@ signing {
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign publishing.publications.mavenJava
 }
-
-
