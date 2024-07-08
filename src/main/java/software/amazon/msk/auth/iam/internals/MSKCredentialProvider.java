@@ -52,6 +52,7 @@ import software.amazon.awssdk.core.retry.conditions.MaxNumberOfRetriesCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
 import software.amazon.awssdk.endpoints.Endpoint;
+import software.amazon.awssdk.profiles.ProfileFileSupplier;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
@@ -314,7 +315,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         }
 
         ProfileCredentialsProvider createEnhancedProfileCredentialsProvider(String p) {
-            return ProfileCredentialsProvider.create(p);
+            return ProfileCredentialsProvider.builder()
+                    .profileName(p)
+                    .profileFile(ProfileFileSupplier.defaultSupplier())
+                    .build();
         }
 
         private Optional<StsAssumeRoleCredentialsProvider> getStsRoleProvider() {
