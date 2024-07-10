@@ -362,6 +362,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .asyncCredentialUpdateEnabled(true)
                 .build();
         }
 
@@ -379,6 +380,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .asyncCredentialUpdateEnabled(true)
                 .build();
         }
 
@@ -395,6 +397,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(getStsClientBuilder(Region.of(stsRegion)).build())
                 .refreshRequest(roleRequest)
+                .asyncCredentialUpdateEnabled(true)
                 .build();
         }
     }
