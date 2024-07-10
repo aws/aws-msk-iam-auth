@@ -362,6 +362,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
+                .asyncCredentialUpdateEnabled(true)
                 .refreshRequest(roleRequest)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
@@ -380,6 +381,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
+                .asyncCredentialUpdateEnabled(true)
                 .refreshRequest(roleRequest)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
@@ -397,6 +399,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(getStsClientBuilder(Region.of(stsRegion)).build())
+                .asyncCredentialUpdateEnabled(true)
                 .refreshRequest(roleRequest)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
