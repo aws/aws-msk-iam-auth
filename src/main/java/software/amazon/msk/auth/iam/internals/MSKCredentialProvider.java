@@ -166,8 +166,9 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
     @Override
     public AwsCredentials resolveCredentials() {
+        log.error("RESOLVING CREDENTIALS!!");
         AwsCredentials credentials = loadCredentialsWithRetry();
-        if (credentials != null && shouldDebugCreds && log.isDebugEnabled()) {
+        if (credentials != null && shouldDebugCreds) {
             logCallerIdentity(credentials);
         }
         return  credentials;
@@ -218,7 +219,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         try {
             StsClient stsClient = getStsClientForDebuggingCreds(credentials);
             GetCallerIdentityResponse response = stsClient.getCallerIdentity();
-            log.debug("The identity of the credentials is {}", response.toString());
+            log.error("The identity of the credentials is {}", response.toString());
         } catch (Exception e) {
             //If we run into an exception logging the caller identity, we should log the exception but
             //continue running.
@@ -362,6 +363,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .asyncCredentialUpdateEnabled(true)
                 .build();
         }
 
@@ -379,6 +381,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .asyncCredentialUpdateEnabled(true)
                 .build();
         }
 
@@ -395,6 +398,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(getStsClientBuilder(Region.of(stsRegion)).build())
                 .refreshRequest(roleRequest)
+                .asyncCredentialUpdateEnabled(true)
                 .build();
         }
     }
