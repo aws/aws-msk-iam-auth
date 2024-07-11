@@ -80,11 +80,13 @@ For more details on SASL/OAUTHBEARER mechanism, please read - [KIP-255](https://
 security.protocol=SASL_SSL
 # Identifies the SASL mechanism to use.
 sasl.mechanism=OAUTHBEARER
-# Binds SASL client implementation.
+# Binds SASL client implementation. You can add client credential configurations here.
 sasl.jaas.config=org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;
 # Encapsulates constructing a SigV4 signature based on extracted credentials.
 # The SASL client bound by "sasl.jaas.config" invokes this class.
 sasl.login.callback.handler.class=software.amazon.msk.auth.iam.IAMOAuthBearerLoginCallbackHandler
+# This is used during client authentication and reauthentication
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMOAuthBearerLoginCallbackHandler
 ```
 
 This configuration finds IAM credentials using the [AWS Default Credentials Provider Chain][DefaultCreds]. To summarize,
