@@ -15,20 +15,10 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import java.net.URI;
-import java.time.Duration;
-import java.util.concurrent.ExecutionException;
 import lombok.AccessLevel;
 import lombok.Getter;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.stream.Collectors;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -51,7 +41,6 @@ import software.amazon.awssdk.core.retry.conditions.AndRetryCondition;
 import software.amazon.awssdk.core.retry.conditions.MaxNumberOfRetriesCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryCondition;
 import software.amazon.awssdk.core.retry.conditions.RetryOnExceptionsCondition;
-import software.amazon.awssdk.endpoints.Endpoint;
 import software.amazon.awssdk.profiles.ProfileFileSupplier;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -62,10 +51,19 @@ import software.amazon.awssdk.services.sts.endpoints.StsEndpointProvider;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
+import java.net.URI;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+
 
 /**
  * This AWS Credential Provider is used to load up AWS Credentials based on options provided on the Jaas config line.
- * As as an example
+ * As an example
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
  * 1. A particular AWS Credential profile: awsProfileName={profile name}
@@ -157,10 +155,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         return AwsCredentialsProviderChain.of(
             EnvironmentVariableCredentialsProvider.create(),
             SystemPropertyCredentialsProvider.create(),
-            WebIdentityTokenFileCredentialsProvider.create(),
-            ProfileCredentialsProvider.create(),
-            ContainerCredentialsProvider.builder().build(),
-            InstanceProfileCredentialsProvider.create()
+            WebIdentityTokenFileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
+            ProfileCredentialsProvider.builder().profileFile(ProfileFileSupplier.defaultSupplier()).build(),
+            ContainerCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
+            InstanceProfileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build()
         );
     }
 
