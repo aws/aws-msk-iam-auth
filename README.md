@@ -46,7 +46,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>2.2.0</version>
+      <version>2.3.0</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -520,6 +520,9 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+
+### Release 2.3.0
+- Bump `software.amazon.awssdk:bom` to `2.30.23`
 
 ### Release 2.2.0
 - Bug fixes for OAUTHBEARER re-authentication
