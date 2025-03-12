@@ -27,7 +27,9 @@ def readVersion() {
         Properties versionProps = new Properties()
 
         if (versionPropsFile.canRead()) {
-            versionProps.load(new FileInputStream(versionPropsFile))
+            InputStream inputStream = new FileInputStream(versionPropsFile)
+            versionProps.load(inputStream)
+            inputStream.close()
         }
         versionProps['version']
     } else {
