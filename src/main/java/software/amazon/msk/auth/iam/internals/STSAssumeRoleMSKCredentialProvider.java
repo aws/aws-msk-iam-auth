@@ -1,7 +1,7 @@
 package software.amazon.msk.auth.iam.internals;
 
 /**
- * This Axon MSK Credential Provider is used to load up AWS Credentials based on options provided on the Jaas config line.
+ * This MSK Credential Provider is used to load up AWS Credentials based on options provided on the Jaas config line.
  * As an example
  * sasl.jaas.config = IAMLoginModule required awsProfileName={profile name};
  * The currently supported options are:
@@ -71,8 +71,8 @@ public class STSAssumeRoleMSKCredentialProvider implements AwsCredentialsProvide
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
     private static final Duration BASE_DELAY = Duration.ofMillis(500);
-    private static final String AXON_AWS_ASSUME_USER_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
-    private static final String AXON_AWS_ASSUME_USER_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
+    private static final String AWS_ASSUME_USER_ACCESS_KEY_ID = "AWS_ACCESS_KEY_ID";
+    private static final String AWS_ASSUME_USER_SECRET_ACCESS_KEY = "AWS_SECRET_ACCESS_KEY";
 
     private final List<AutoCloseable> closeableProviders;
     private final AwsCredentialsProvider compositeDelegate;
@@ -375,11 +375,11 @@ public class STSAssumeRoleMSKCredentialProvider implements AwsCredentialsProvide
             StsClient stsClient = getStsRegionalClientBuilder(Region.of(stsRegion), stsRegionalEndPoint).credentialsProvider(StaticCredentialsProvider.create(new AwsCredentials() {
                 @Override
                 public String accessKeyId() {
-                    return System.getenv(AXON_AWS_ASSUME_USER_ACCESS_KEY_ID);
+                    return System.getenv(AWS_ASSUME_USER_ACCESS_KEY_ID);
                 }
                 @Override
                 public String secretAccessKey() {
-                    return System.getenv(AXON_AWS_ASSUME_USER_SECRET_ACCESS_KEY);
+                    return System.getenv(AWS_ASSUME_USER_SECRET_ACCESS_KEY);
                 }
             })).build();
 

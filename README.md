@@ -71,7 +71,7 @@ sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required;
 sasl.client.callback.handler.class = software.amazon.msk.auth.iam.IAMClientCallbackHandler
 ```
 
-## Configuring a Kafka client to use Axon AWS IAM with AWS_MSK_IAM mechanism with Custom STS Regional endpoints
+## Configuring a Kafka client to use AWS IAM with AWS_MSK_IAM mechanism with Custom STS Regional endpoints
 You can configure a Kafka client to use AWS IAM for authentication by adding the following properties to the client's
 configuration. This is wrapper on the IAM Auth library to support Regional Based STS Endpoint for to retrieve temporary assume role credentials.
 
