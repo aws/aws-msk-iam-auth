@@ -71,6 +71,28 @@ sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required;
 sasl.client.callback.handler.class = software.amazon.msk.auth.iam.IAMClientCallbackHandler
 ```
 
+## Configuring a Kafka client to use AWS IAM with AWS_MSK_IAM mechanism with Custom STS Regional endpoints
+You can configure a Kafka client to use AWS IAM for authentication by adding the following properties to the client's
+configuration. This is wrapper on the IAM Auth library to support Regional Based STS Endpoint for to retrieve temporary assume role credentials.
+
+```properties
+# Sets up TLS for encryption and SASL for authN.
+security.protocol = SASL_SSL
+
+# Identifies the SASL mechanism to use.
+sasl.mechanism = AWS_MSK_IAM
+
+# Binds SASL client implementation.
+sasl.jaas.config = software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn='awsRoleArn' awsRoleSessionName='awsRoleSessionName'  awsStsRegion='awsStsRegion' awsStsRegionalEndpoint='awsStsRegionalEndpoint';
+
+# Encapsulates constructing a SigV4 signature based on extracted credentials.
+# The SASL client bound by "sasl.jaas.config" invokes this class.
+# The SASL client bound by "sasl.jaas.config" invokes this class.
+sasl.login.callback.handler.class=software.amazon.msk.auth.iam.STSAssumeRoleIAMClientCallbackHandler
+# This is used during client authentication and reauthentication
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.STSAssumeRoleIAMClientCallbackHandler
+```
+
 ## Configuring a Kafka client to use AWS IAM with SASL OAUTHBEARER mechanism
 You can alternatively use SASL/OAUTHBEARER mechanism using IAM authentication by adding following configuration.
 For more details on SASL/OAUTHBEARER mechanism, please read - [KIP-255](https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=75968876)
@@ -158,6 +180,18 @@ When the Kafka client is running in a VPC with an [STS interface VPC Endpoint][S
 The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
+ 
+### Specifying an AWS IAM Role with Custom STS Regional endpoints
+The library supports another way to configure a client to assume an IAM role and use the role's temporary credentials. The IAM role's ARN and optionally the session name for the client can be passed in as client configuration property:
+
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" awsRoleSessionName="producer"  awsStsRegion="us-west-2" awsStsRegionalEndpoint="https://vpce-4kujcrex.sts.us-east-1.vpce.amazonaws.com";
+In this case, the awsRoleArn specifies the ARN for the IAM role the client should use and awsRoleSessionName specifies the session name that this particular client should use while assuming the IAM role. If the same IAM Role is used in multiple contexts, the session names can be used to differentiate between the different contexts. The awsRoleSessionName is optional.
+
+awsStsRegion specifies the regional endpoint of AWS STS to use while assuming the IAM role. If awsStsRegion is omitted the global endpoint for AWS STS is used by default. When the Kafka client is running in a VPC with an STS interface VPC Endpoint (AWS PrivateLink) to a regional endpoint of AWS STS and we want all STS traffic to go over that endpoint, we should set awsStsRegion to the region corresponding to the interface VPC Endpoint. It also be necessary to configure the awsStsRegionalEndpoint which points to custom regional based VPC endpoints. 
+
+The Default Credential Provider Chain must contain the permissions necessary to assume the client role. If the client is an EC2 instance, its instance profile should have permission to assume the msk_client_role and in case of non EC2 instance below environment variables needs to set to work with assume role credentials
+AWS_ACCESS_KEY_ID = "This will be permanant access key id should have permission to assume the msk_client_role" ( For security reason we can keep yearly rotation based )
+AWS_SECRET_ACCESS_KEY = "This will be permanant secrete key should have permission to assume the msk_client_role" ( For security reason we can keep yearly rotation based )
  
 ### Figuring out whether or not to use default credentials
 
