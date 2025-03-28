@@ -90,6 +90,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     private static final String AWS_ROLE_SESSION_TOKEN = "awsRoleSessionToken";
     private static final String AWS_STS_REGION = "awsStsRegion";
     private static final String AWS_DEBUG_CREDS_KEY = "awsDebugCreds";
+    private static final String AWS_SHOULD_USE_FIPS = "awsShouldUseFips";
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
     private static final String AWS_MAX_BACK_OFF_TIME_MS = "awsMaxBackOffTimeMs";
     private static final String GLOBAL_REGION = "aws-global";
@@ -264,6 +265,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return Optional.ofNullable(optionsMap.get(AWS_DEBUG_CREDS_KEY)).map(d -> d.equals("true")).orElse(false);
         }
 
+        public Boolean shouldUseFips() {
+            return Optional.ofNullable(optionsMap.get(AWS_SHOULD_USE_FIPS)).map(d -> d.equals("true")).orElse(false);
+        }
+
         public String getStsRegion() {
             return Optional.ofNullable((String) optionsMap.get(AWS_STS_REGION))
                     .orElse(GLOBAL_REGION);
@@ -295,9 +300,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             }
         }
 
-        private StsClientBuilder getStsClientBuilder(Region stsRegion) {
+        private StsClientBuilder getStsClientBuilder(Region stsRegion, Boolean shouldUseFips) {
             StsClientBuilder builder = StsClient.builder().region(stsRegion);
-            if (stsRegion != Region.AWS_GLOBAL) {
+            if (stsRegion != Region.AWS_GLOBAL && !shouldUseFips) {
+                log.info("Using STS Endpoint override");
                 builder.endpointOverride(buildEndpointConfiguration(stsRegion));
             }
             return builder;
@@ -327,6 +333,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 String sessionName = Optional.ofNullable((String) optionsMap.get(AWS_ROLE_SESSION_KEY))
                         .orElse("aws-msk-iam-auth");
                 String stsRegion = getStsRegion();
+                Boolean shouldUseFIPs = shouldUseFips();
 
                 String accessKey = (String) optionsMap.getOrDefault(AWS_ROLE_ACCESS_KEY_ID, null);
                 String secretKey = (String) optionsMap.getOrDefault(AWS_ROLE_SECRET_ACCESS_KEY, null);
@@ -337,25 +344,26 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                             sessionToken != null
                                     ? AwsSessionCredentials.create(accessKey, secretKey, sessionToken)
                                     : AwsBasicCredentials.create(accessKey, secretKey));
-                    return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials);
+                    return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, credentials, shouldUseFIPs);
                 }
                 else if (externalId != null) {
-                    return createSTSRoleCredentialProvider((String) p, externalId, sessionName, stsRegion);
+                    return createSTSRoleCredentialProvider((String) p, externalId, sessionName, stsRegion, shouldUseFIPs);
                 }
 
-                return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion);
+                return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, shouldUseFIPs);
             });
         }
 
         StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(
             String roleArn,
             String sessionName,
-            String stsRegion) {
+            String stsRegion,
+            Boolean shouldUseFips) {
             AssumeRoleRequest roleRequest = AssumeRoleRequest.builder()
                 .roleArn(roleArn)
                 .roleSessionName(sessionName)
                 .build();
-            StsClient stsClient = getStsClientBuilder(Region.of(stsRegion))
+            StsClient stsClient = getStsClientBuilder(Region.of(stsRegion), shouldUseFips)
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
@@ -367,12 +375,13 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(
             String roleArn,
             String sessionName, String stsRegion,
-            AwsCredentialsProvider credentials) {
+            AwsCredentialsProvider credentials,
+            Boolean shouldUseFips) {
             AssumeRoleRequest roleRequest = AssumeRoleRequest.builder()
                 .roleArn(roleArn)
                 .roleSessionName(sessionName)
                 .build();
-            StsClient stsClient = getStsClientBuilder(Region.of(stsRegion))
+            StsClient stsClient = getStsClientBuilder(Region.of(stsRegion), shouldUseFips)
                 .credentialsProvider(credentials)
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
@@ -386,14 +395,15 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             String roleArn,
             String externalId,
             String sessionName,
-            String stsRegion) {
+            String stsRegion,
+            Boolean shouldUseFips) {
             AssumeRoleRequest roleRequest = AssumeRoleRequest.builder()
                 .externalId(externalId)
                 .roleArn(roleArn)
                 .roleSessionName(sessionName)
                 .build();
             return StsAssumeRoleCredentialsProvider.builder()
-                .stsClient(getStsClientBuilder(Region.of(stsRegion)).build())
+                .stsClient(getStsClientBuilder(Region.of(stsRegion), shouldUseFips).build())
                 .refreshRequest(roleRequest)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
