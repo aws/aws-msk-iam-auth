@@ -353,7 +353,7 @@ public class MSKCredentialProviderTest {
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                             String sessionName, String stsRegion, Boolean shouldUseFips) {
+                                                                                    String sessionName, String stsRegion, Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals(false, shouldUseFips);
@@ -467,7 +467,7 @@ public class MSKCredentialProviderTest {
             }
 
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                             String sessionName, String stsRegion, Boolean shouldUseFips) {
+                                                                                    String sessionName, String stsRegion, Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals("aws-msk-iam-auth", sessionName);
                 assertEquals(false, shouldUseFips);
@@ -688,7 +688,7 @@ public class MSKCredentialProviderTest {
                                                                      Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                             String sessionName, String stsRegion, Boolean shouldUseFips) {
+                                                                                    String sessionName, String stsRegion, Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
                 assertEquals(false, shouldUseFips);
