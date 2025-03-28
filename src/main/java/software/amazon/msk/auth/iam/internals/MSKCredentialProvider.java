@@ -303,7 +303,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         private StsClientBuilder getStsClientBuilder(Region stsRegion, Boolean shouldUseFips) {
             StsClientBuilder builder = StsClient.builder().region(stsRegion);
             if (stsRegion != Region.AWS_GLOBAL && !shouldUseFips) {
-                log.info("Using STS Endpoint override");
+                log.debug("Using STS Endpoint override");
                 builder.endpointOverride(buildEndpointConfiguration(stsRegion));
             }
             return builder;
