@@ -353,10 +353,46 @@ public class MSKCredentialProviderTest {
 
         MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                                    String sessionName, String stsRegion) {
+                                                                                    String sessionName, String stsRegion, Boolean shouldUseFips) {
+                assertEquals(TEST_ROLE_ARN, roleArn);
+                assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
+                assertEquals(false, shouldUseFips);
+                assertEquals("eu-west-1", stsRegion);
+                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
+                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
+                return mockStsRoleProvider;
+            }
+        };
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
+
+        AwsCredentials credentials = provider.resolveCredentials();
+        validateBasicSessionCredentials(credentials);
+
+        provider.close();
+        Mockito.verify(mockStsRoleProvider, times(1)).close();
+    }
+
+    @Test
+    public void testAwsRoleArnSessionNameAndStsRegionAndShouldUseFIPs() {
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+            .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+            .thenAnswer(i -> CompletableFuture.completedFuture(AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+        optionsMap.put("awsRoleSessionName", TEST_ROLE_SESSION_NAME);
+        optionsMap.put("awsStsRegion", "eu-west-1");
+        optionsMap.put("awsShouldUseFips", "true");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
+            StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
+                                                                             String sessionName, String stsRegion, Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
+                assertEquals(true, shouldUseFips);
                 URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
                 assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
@@ -389,11 +425,13 @@ public class MSKCredentialProviderTest {
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String externalId,
                                                                                     String sessionName,
-                                                                                    String stsRegion) {
+                                                                                    String stsRegion,
+                                                                                    Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(TEST_ROLE_EXTERNAL_ID, externalId);
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
+                assertEquals(false, shouldUseFips);
                 URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
                 assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
@@ -429,9 +467,10 @@ public class MSKCredentialProviderTest {
             }
 
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                                    String sessionName, String stsRegion) {
+                                                                                    String sessionName, String stsRegion, Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals("aws-msk-iam-auth", sessionName);
+                assertEquals(false, shouldUseFips);
                 return mockStsRoleProvider;
             }
         };
@@ -649,9 +688,10 @@ public class MSKCredentialProviderTest {
                                                                      Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
-                                                                                    String sessionName, String stsRegion) {
+                                                                                    String sessionName, String stsRegion, Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
+                assertEquals(false, shouldUseFips);
                 return mockStsRoleProvider;
             }
         };
@@ -662,9 +702,11 @@ public class MSKCredentialProviderTest {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {
             StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(String roleArn,
                                                                                     String sessionName, String stsRegion,
-                                                                                    AwsCredentialsProvider credentials) {
+                                                                                    AwsCredentialsProvider credentials,
+                                                                                    Boolean shouldUseFips) {
                 assertEquals(TEST_ROLE_ARN, roleArn);
                 assertEquals(s, sessionName);
+                assertEquals(false, shouldUseFips);
                 return mockStsRoleProvider;
             }
         };
