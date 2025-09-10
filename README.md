@@ -203,6 +203,15 @@ With console access to your EKS containers, as in the [EKS example](https://docs
  
 ## Troubleshooting
 
+
+### Cannot Change Principals during re-authentication
+
+This error may happen when the role session name or IAM role used to authenticate to MSK changes. This may happen when the MSK client is running in compute services like EKS, which will perdiodically change the role session name of the AWS temporary credentials it delivers to pods running in EKS.
+
+To mitigate this issue, you can configure [role chaining](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles.html#iam-term-role-chaining) with the MSK client to give use a static IAM role and static role session name. You can configure role chaing by following the steps documented in [the section specifying a role based credential profile for a client](#specifying-a-role-based-credential-profile-for-a-client).
+
+
+
 ### IAMClientCallbackHandler could not be found
 
 A Kafka client configured to use `AWS_MSK_IAM` may see an error that the `IAMClientCallbackHandler` cannot be found:
