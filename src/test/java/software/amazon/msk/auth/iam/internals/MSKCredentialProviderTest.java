@@ -74,6 +74,7 @@ public class MSKCredentialProviderTest {
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_PROFILE_NAME = "awsProfileName";
     private static final String AWS_DEBUG_CREDS_NAME = "awsDebugCreds";
+    private static final String AWS_SKIP_CRED_CHAIN = "skipCredChain";
 
     /**
      * If no options are passed in it should use the default credentials provider
@@ -780,6 +781,49 @@ public class MSKCredentialProviderTest {
 
     private URL getProfileResourceURL() {
         return getClass().getClassLoader().getResource("profile_config_file");
+    }
+
+    @Test
+    public void testSkipCredChainTrue() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_SKIP_CRED_CHAIN, "true");
+        optionsMap.put(AWS_PROFILE_NAME, "profile-1");
+
+        
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                throw new RuntimeException("Default provider should not be called when skipCredChain is true");
+            }
+        };
+        
+        assertThrows(SdkClientException.class, () -> provider.resolveCredentials());
+    }
+
+    @Test
+    public void testSkipCredChainFalse() {
+        runTestWithSystemPropertyCredentials(() -> {
+            Map<String, String> optionsMap = new HashMap<>();
+            optionsMap.put(AWS_SKIP_CRED_CHAIN, "false");
+            MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+            
+            AwsCredentials credentials = provider.resolveCredentials();
+            
+            assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
+
+    @Test
+    public void testSkipCredChainNotSet() {
+        runTestWithSystemPropertyCredentials(() -> {
+            Map<String, String> optionsMap = new HashMap<>();
+            MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+            
+            AwsCredentials credentials = provider.resolveCredentials();
+            
+            assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 
 }
