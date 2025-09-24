@@ -89,6 +89,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     private static final String AWS_ROLE_SESSION_KEY = "awsRoleSessionName";
     private static final String AWS_ROLE_SESSION_TOKEN = "awsRoleSessionToken";
     private static final String AWS_STS_REGION = "awsStsRegion";
+    private static final String AWS_ADD_DEFAULT_PROVIDERS = "awsAddDefaultProviders";
     private static final String AWS_DEBUG_CREDS_KEY = "awsDebugCreds";
     private static final String AWS_SHOULD_USE_FIPS = "awsShouldUseFips";
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
@@ -111,7 +112,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
     MSKCredentialProvider(ProviderBuilder builder) {
         this(builder.getProviders(), builder.shouldDebugCreds(), builder.getStsRegion(), builder.getMaxRetries(),
-                builder.getMaxBackOffTimeMs());
+                builder.getMaxBackOffTimeMs(), builder.addDefaultProviders());
     }
 
     MSKCredentialProvider(List<AwsCredentialsProvider> providers,
@@ -119,9 +120,20 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                           String stsRegion,
                           int maxRetries,
                           int maxBackOffTimeMs) {
+        this(providers, shouldDebugCreds, stsRegion, maxRetries, maxBackOffTimeMs, true);
+    }
+
+    MSKCredentialProvider(List<AwsCredentialsProvider> providers,
+                          Boolean shouldDebugCreds,
+                          String stsRegion,
+                          int maxRetries,
+                          int maxBackOffTimeMs,
+                          boolean addDefaultProviders) {
         AwsCredentialsProviderChain.Builder chain = AwsCredentialsProviderChain.builder();
         chain.credentialsProviders(providers);
-        chain.addCredentialsProvider(getDefaultProvider());
+        if (addDefaultProviders) {
+            chain.addCredentialsProvider(getDefaultProvider());
+        }
         compositeDelegate = chain.build();
         closeableProviders = providers.stream()
             .filter(p -> p instanceof AutoCloseable)
@@ -259,6 +271,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             getProfileProvider().ifPresent(providers::add);
             getStsRoleProvider().ifPresent(providers::add);
             return providers;
+        }
+
+        public Boolean addDefaultProviders() {
+            return Optional.ofNullable(optionsMap.get(AWS_ADD_DEFAULT_PROVIDERS)).map(d -> d.equals("true")).orElse(true);
         }
 
         public Boolean shouldDebugCreds() {

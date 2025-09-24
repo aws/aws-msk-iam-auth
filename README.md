@@ -158,10 +158,21 @@ When the Kafka client is running in a VPC with an [STS interface VPC Endpoint][S
 The Default Credential Provider Chain must contain the permissions necessary to assume the client role.
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
- 
+
 ### Figuring out whether or not to use default credentials
 
 When you want the MSK client to connect to MSK using credentials not found in the [AWS Default Credentials Provider Chain][DefaultCreds], you can specify an `awsProfileName` containing the credential profile to use, or an `awsRoleArn` to indicate an IAM Role’s ARN to assume using credentials in the Default Credential Provider Chain.  These parameters are optional, and if they are not set the MSK client will use credentials from the Default Credential Provider Chain. There is no need to specify them if you intend to use an IAM role associated with an AWS compute service, such as EC2 or ECS to authenticate to MSK.
+
+If Assume Role or Profile Name params are set, but a provider fails to obtain credentials, the fallback mechanism will use the default credential chain.
+To avoid this, set the `awsAddDefaultProviders` parameter to `false` (if not set, the default value is `true`):
+
+```properties
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
+  awsRoleArn="arn:aws:iam::123456789012:role/msk_client_role" \
+  awsRoleSessionName="producer" \
+  awsStsRegion="us-west-2" \
+  awsAddDefaultProviders="false";
+```
 
 ### Retries while getting credentials
 In some scenarios the IAM credentials might be transiently unavailable. This will cause the connection to fail, which

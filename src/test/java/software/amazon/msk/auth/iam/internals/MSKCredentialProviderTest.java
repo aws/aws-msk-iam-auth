@@ -74,6 +74,7 @@ public class MSKCredentialProviderTest {
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
     private static final String AWS_PROFILE_NAME = "awsProfileName";
     private static final String AWS_DEBUG_CREDS_NAME = "awsDebugCreds";
+    private static final String AWS_ADD_DEFAULT_PROVIDERS = "awsAddDefaultProviders";
 
     /**
      * If no options are passed in it should use the default credentials provider
@@ -782,4 +783,41 @@ public class MSKCredentialProviderTest {
         return getClass().getClassLoader().getResource("profile_config_file");
     }
 
+    @Test
+    public void testAddDefaultProvidersTrue() {
+        runTestWithSystemPropertyCredentials(() -> {
+            Map<String, String> optionsMap = new HashMap<>();
+            optionsMap.put(AWS_PROFILE_NAME, "profile-1");
+            optionsMap.put(AWS_ADD_DEFAULT_PROVIDERS, "true");
+
+            MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+            AwsCredentials credentials = provider.resolveCredentials();
+
+            assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
+
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
+
+    @Test
+    public void testAddDefaultProvidersFalse() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ADD_DEFAULT_PROVIDERS, "false");
+        // if MSKCredentialProviders is configured with an empty chain of providers, it should throw IllegalArgumentException
+        assertThrows(IllegalArgumentException.class, () -> new MSKCredentialProvider(optionsMap));
+    }
+
+    @Test
+    public void testAddDefaultProvidersNotSet() {
+        runTestWithSystemPropertyCredentials(() -> {
+            Map<String, String> optionsMap = new HashMap<>();
+
+            MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+            AwsCredentials credentials = provider.resolveCredentials();
+
+            assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
+            assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
+
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
 }
