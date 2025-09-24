@@ -818,6 +818,6 @@ public class MSKCredentialProviderTest {
             assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
             assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
 
-        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);    }
-
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
 }
