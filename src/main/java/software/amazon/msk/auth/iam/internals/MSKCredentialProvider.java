@@ -168,7 +168,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         return AwsCredentialsProviderChain.of(
             EnvironmentVariableCredentialsProvider.create(),
             SystemPropertyCredentialsProvider.create(),
-            WebIdentityTokenFileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
             ProfileCredentialsProvider.builder().profileFile(ProfileFileSupplier.defaultSupplier()).build(),
             ContainerCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
             InstanceProfileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build()
@@ -270,6 +269,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             List<AwsCredentialsProvider> providers = new ArrayList<>();
             getProfileProvider().ifPresent(providers::add);
             getStsRoleProvider().ifPresent(providers::add);
+            providers.add(getWebIdentityTokenProvider());
             return providers;
         }
 
@@ -368,6 +368,14 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
                 return createSTSRoleCredentialProvider((String) p, sessionName, stsRegion, shouldUseFIPs);
             });
+        }
+
+        private WebIdentityTokenFileCredentialsProvider getWebIdentityTokenProvider() {
+            Optional<String> sessionName = Optional.ofNullable((String) optionsMap.get(AWS_ROLE_SESSION_KEY));
+            if (sessionName.isPresent()) {
+                return WebIdentityTokenFileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).roleSessionName(sessionName.get()).build();
+            }
+            return WebIdentityTokenFileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build();
         }
 
         StsAssumeRoleCredentialsProvider createSTSRoleCredentialProvider(
