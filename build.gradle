@@ -1,14 +1,16 @@
 plugins {
     id 'java-library'
-    id "io.freefair.lombok" version "5.3.0"
-    id 'com.github.johnrengelman.shadow' version '6.1.0'
+    id "io.freefair.lombok" version "6.6.3"
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
     id 'maven-publish'
+    id 'io.github.gradle-nexus.publish-plugin' version '1.1.0'
     id 'signing'
     id 'org.owasp.dependencycheck' version '7.1.0.1'
 }
 
 
-sourceCompatibility = 1.8
+sourceCompatibility = 17
+targetCompatibility = 17
 
 repositories {
     mavenCentral()
@@ -43,7 +45,7 @@ group "software.amazon.msk"
 dependencies {
     compileOnly('org.apache.kafka:kafka-clients:2.8.1')
     // aws sdk imports.
-    implementation(platform('software.amazon.awssdk:bom:2.32.26'))
+    implementation(platform('software.amazon.awssdk:bom:2.36.3'))
     implementation('software.amazon.awssdk:auth')
     implementation('software.amazon.awssdk:sso')
     implementation('software.amazon.awssdk:ssooidc')
@@ -57,66 +59,25 @@ dependencies {
     testImplementation('org.apache.kafka:kafka-clients:2.2.1')
     testImplementation('org.junit.jupiter:junit-jupiter-api:5.7.0')
     testImplementation('org.apache.commons:commons-lang3:3.11')
-    testImplementation('org.mockito:mockito-inline:3.6.0')
+    testImplementation('org.mockito:mockito-inline:5.0.0')
 
     testRuntimeOnly('org.junit.jupiter:junit-jupiter-engine:5.7.0')
     testRuntimeOnly('org.apache.logging.log4j:log4j-core:2.17.1')
     testRuntimeOnly('org.apache.logging.log4j:log4j-slf4j-impl:2.17.1')
 }
 
-import com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation
 
 shadowJar {
     //We remove org.slf4j from the configuration as it gets included transitively by multiple dependencies and just
     //removing it from the configuration being shadowed is not sufficient.
     configurations = [project.configurations.runtimeClasspath.exclude([group: "org.slf4j", module: "slf4j-api"])]
     exclude 'META-INF/versions/17/', 'META-INF/versions/21/', 'META-INF/versions/22/'
+
+    relocate 'com.fasterxml.jackson', 'aws_msk_iam_auth_shadow.com.fasterxml.jackson'
+    relocate 'com.h2database', 'aws_msk_iam_auth_shadow.com.h2database'
 }
 
 
-import java.util.jar.JarFile
-
-class FilteredConfigureShadowRelocation extends ConfigureShadowRelocation {
-
-    @Input
-    Set<String> relocationFilterPrefix
-
-    @TaskAction
-    void configureRelocation() {
-        def packages = [] as Set<String>
-        configurations.each { configuration ->
-            configuration.files.each { jar ->
-                JarFile jf = new JarFile(jar)
-                jf.entries().each { entry ->
-                    if (entry.name.endsWith(".class")) {
-                        packages << entry.name[0..entry.name.lastIndexOf('/')-1].replaceAll('/', '.')
-                    }
-                }
-                jf.close()
-            }
-        }
-        packages.each { pkg ->
-            def shouldRelocate = true
-            relocationFilterPrefix.each { prefix ->
-                if (pkg.startsWith(prefix)) {
-                    shouldRelocate = false
-                }
-            }
-            if (shouldRelocate) {
-                target.relocate(pkg, "${prefix}.${pkg}")
-            }
-        }
-
-    }
-}
-
-task relocateShadowJar(type: FilteredConfigureShadowRelocation) {
-    target = tasks.shadowJar
-    prefix = "aws_msk_iam_auth_shadow"
-    relocationFilterPrefix = ["org.slf4j", "software.amazon.awssdk"]
-}
-
-tasks.shadowJar.dependsOn tasks.relocateShadowJar
 
 test {
     useJUnitPlatform {
@@ -160,8 +121,8 @@ publishing {
 
     repositories {
         maven {
-            name = "sonatype-staging"
-            url "https://aws.oss.sonatype.org/service/local/staging/deploy/maven2"
+            name = "sonatype-staging-api"
+            url "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
             credentials {
                 username project.hasProperty('ossrhUsername') ? project.property('ossrhUsername') : ""
                 password project.hasProperty('ossrhPassword') ? project.property('ossrhPassword') : ""
@@ -169,6 +130,16 @@ publishing {
         }
     }
 
+}
+
+nexusPublishing {
+    repositories {
+        sonatype {
+            nexusUrl.set(uri("https://ossrh-staging-api.central.sonatype.com/service/local/"))
+            username = project.findProperty("ossrhUsername") ?: ""
+            password = project.findProperty("ossrhPassword") ?: ""
+        }
+    }
 }
 signing {
     def signingKey = project.hasProperty('signingKey') ? project.property('signingKey') : ""
