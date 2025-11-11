@@ -26,7 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
+import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

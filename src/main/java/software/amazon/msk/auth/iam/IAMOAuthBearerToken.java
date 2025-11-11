@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.common.security.oauthbearer.OAuthBearerToken;
 
-import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
+import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
 import software.amazon.awssdk.utils.StringUtils;
 import software.amazon.msk.auth.iam.internals.utils.URIUtils;
 
