@@ -37,7 +37,7 @@ import org.apache.kafka.common.security.oauthbearer.OAuthBearerTokenCallback;
 import org.apache.kafka.common.security.scram.ScramCredentialCallback;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
-import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
+import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
 import software.amazon.msk.auth.iam.internals.utils.URIUtils;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
