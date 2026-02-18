@@ -244,7 +244,7 @@ Workaround: Configure a static session name using explicit JAAS configuration:
 ```
 sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
     awsRoleArn="arn:aws:iam::123456789012:role/MSKAccessRole" \
-    awsStsSessionName="msk-static-session";
+    awsRoleSessionName="msk-static-session";
 ```
 
 This forces the IAM client to use a consistent session name across credential refreshes, preventing the principal change error.
