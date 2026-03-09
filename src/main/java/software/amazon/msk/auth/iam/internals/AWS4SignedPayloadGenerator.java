@@ -15,11 +15,12 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.temporal.ChronoUnit;
 import lombok.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -101,7 +102,7 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private byte[] toPayloadBytes(SdkHttpFullRequest request, AuthenticationRequestParams params) throws IOException {
         final Map<String, String> keyValueMap = toKeyValueMap(request, params);
 
-        final ObjectMapper mapper = new ObjectMapper();
+        final ObjectMapper mapper = JsonMapper.builder().build();
         return mapper.writeValueAsBytes(keyValueMap);
     }
 
