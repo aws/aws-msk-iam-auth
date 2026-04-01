@@ -15,8 +15,11 @@
 */
 package software.amazon.msk.auth.iam.internals.region;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Hashtable;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -32,12 +35,14 @@ import software.amazon.awssdk.regions.Region;
 
 /**
  * A {@link ConfigurableRegionProvider} that resolves the AWS region by performing
- * a DNS TXT record lookup via Route 53.
+ * a DNS TXT record lookup via Route 53, with time-based caching.
  *
  * <p>Configuration parameters (passed via constructor map):</p>
  * <ul>
  *   <li>{@code host} — optional fully-qualified hostname to query for the TXT record.
  *       When provided, this value is used directly as the DNS lookup name.</li>
+ *   <li>{@code refresh.seconds} — optional cache TTL in seconds. Defaults to 300 (5 minutes).
+ *       Set to 0 to disable caching.</li>
  * </ul>
  *
  * <p>When no {@code host} is configured, the {@link #getRegion(String)} method
@@ -48,50 +53,66 @@ import software.amazon.awssdk.regions.Region;
  * (e.g. {@code "us-east-1"}).</p>
  */
 public class Route53RegionProvider implements ConfigurableRegionProvider {
-    private static final String REGION_PREFIX = "region.";
     private static final Logger log = LoggerFactory.getLogger(Route53RegionProvider.class);
     private static final String HOST_KEY = "host";
+    private static final String REFRESH_SECONDS_KEY = "refresh.seconds";
+    private static final String REGION_PREFIX = "region.";
+    private static final long DEFAULT_REFRESH_SECONDS = 15;
 
     private final String host;
+    private final long refreshSeconds;
+    private final Clock clock;
+    private final ConcurrentHashMap<String, CachedRegion> cache = new ConcurrentHashMap<>();
 
     public Route53RegionProvider(Map<String, String> config) {
+        this(config, Clock.systemUTC());
+    }
+
+    // Visible for testing
+    Route53RegionProvider(Map<String, String> config, Clock clock) {
         this.host = config != null ? config.get(HOST_KEY) : null;
+        this.refreshSeconds = parseRefreshSeconds(config);
+        this.clock = clock;
         if (log.isDebugEnabled()) {
-            log.debug("Route53RegionProvider initialized with host={}", this.host);
+            log.debug("Route53RegionProvider initialized with host={}, refresh.seconds={}",
+                    this.host, this.refreshSeconds);
         }
     }
 
-    /**
-     * Resolve the region using the configured host. Throws if no host was
-     * configured and no fallback host is available.
-     */
     @Override
     public Region getRegion() {
         return getRegion(null);
     }
 
-    /**
-     * Resolve the region by looking up a DNS TXT record.
-     *
-     * <p>If a {@code host} was provided at construction time, that value is used
-     * as the DNS name. Otherwise the given {@code host} parameter is prefixed
-     * with {@code "region."} to form the lookup name.</p>
-     *
-     * @param host fallback host used when no host was configured at construction
-     * @return the resolved AWS {@link Region}
-     * @throws SdkClientException if the region cannot be resolved
-     */
+    @Override
     public Region getRegion(String host) {
         String lookupHost = this.host != null ? this.host : buildLookupHost(host);
         if (lookupHost == null || lookupHost.isBlank()) {
             throw SdkClientException.create(
                     "Cannot resolve region: no host configured and no host parameter provided");
         }
+
+        if (refreshSeconds > 0) {
+            CachedRegion cached = cache.get(lookupHost);
+            if (cached != null && !cached.isExpired(clock.instant(), refreshSeconds)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("Returning cached region {} for host: {}", cached.region.id(), lookupHost);
+                }
+                return cached.region;
+            }
+        }
+
         if (log.isDebugEnabled()) {
             log.debug("Resolving region via TXT record for host: {}", lookupHost);
         }
         String regionId = resolveTxtRecord(lookupHost);
-        return Region.of(regionId);
+        Region region = Region.of(regionId);
+
+        if (refreshSeconds > 0) {
+            cache.put(lookupHost, new CachedRegion(region, clock.instant()));
+        }
+
+        return region;
     }
 
     private String buildLookupHost(String host) {
@@ -101,7 +122,7 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
         return REGION_PREFIX + host;
     }
 
-    private String resolveTxtRecord(String lookupHost) {
+    String resolveTxtRecord(String lookupHost) {
         try {
             Hashtable<String, String> env = new Hashtable<>();
             env.put(DirContext.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.dns.DnsContextFactory");
@@ -115,7 +136,6 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
                 }
                 NamingEnumeration<?> values = txtAttr.getAll();
                 String value = (String) values.next();
-                // TXT records may be quoted
                 return value.replace("\"", "").trim();
             } finally {
                 ctx.close();
@@ -123,6 +143,38 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
         } catch (NamingException e) {
             throw SdkClientException.create(
                     "Failed to resolve TXT record for host: " + lookupHost, e);
+        }
+    }
+
+    private static long parseRefreshSeconds(Map<String, String> config) {
+        if (config == null) {
+            return DEFAULT_REFRESH_SECONDS;
+        }
+        String value = config.get(REFRESH_SECONDS_KEY);
+        if (value == null || value.isBlank()) {
+            return DEFAULT_REFRESH_SECONDS;
+        }
+        try {
+            long parsed = Long.parseLong(value.trim());
+            return Math.max(0, parsed);
+        } catch (NumberFormatException e) {
+            log.warn("Invalid value for {}: '{}'. Using default {}s.",
+                    REFRESH_SECONDS_KEY, value, DEFAULT_REFRESH_SECONDS);
+            return DEFAULT_REFRESH_SECONDS;
+        }
+    }
+
+    private static class CachedRegion {
+        final Region region;
+        final Instant resolvedAt;
+
+        CachedRegion(Region region, Instant resolvedAt) {
+            this.region = region;
+            this.resolvedAt = resolvedAt;
+        }
+
+        boolean isExpired(Instant now, long refreshSeconds) {
+            return resolvedAt.plusSeconds(refreshSeconds).isBefore(now);
         }
     }
 }

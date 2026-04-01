@@ -199,12 +199,12 @@ You can override this behavior by specifying a custom region provider via the `a
 
 ```properties
 sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
-  awsMskRegionProvider="software.amazon.msk.auth.iam.internals.region.Route53RegionProvider?host=region.my-cluster.example.com";
+  awsMskRegionProvider="software.amazon.msk.auth.iam.internals.region.Route53RegionProvider?host=region.my-cluster.example.com;refresh.seconds=60";
 ```
 
-The library ships with `Route53RegionProvider`, which resolves the region by performing a DNS TXT record lookup. It accepts an optional `host` parameter:
-- When `host` is provided, it is used directly as the DNS lookup name.
-- When `host` is omitted, the broker hostname is prefixed with `region.` to form the lookup name (e.g. `region.broker.example.com`).
+The library ships with `Route53RegionProvider`, which resolves the region by performing a DNS TXT record lookup. It accepts the following optional parameters:
+- `host` — when provided, it is used directly as the DNS lookup name. When omitted, the broker hostname is prefixed with `region.` to form the lookup name (e.g. `region.broker.example.com`).
+- `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and resolve DNS on every call.
 
 The TXT record value is expected to contain a valid AWS region id (e.g. `us-east-1`).
 
