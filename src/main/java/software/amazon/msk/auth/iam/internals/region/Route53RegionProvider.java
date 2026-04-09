@@ -41,8 +41,15 @@ import software.amazon.awssdk.regions.Region;
  * <ul>
  *   <li>{@code host} — optional fully-qualified hostname to query for the TXT record.
  *       When provided, this value is used directly as the DNS lookup name.</li>
- *   <li>{@code refresh.seconds} — optional cache TTL in seconds. Defaults to 300 (5 minutes).
- *       Set to 0 to disable caching.</li>
+ *   <li>{@code refresh.seconds} — how often, in seconds, the cached region value
+ *       is refreshed via a new DNS lookup. Defaults to 60 (1 minute).
+ *       Set to 0 to disable caching and resolve DNS on every call.
+ *       Uses lazy evaluation: the cache is only refreshed when an authentication
+ *       request needs to be signed, which typically happens during initial
+ *       authentication with MSK and subsequent re-authentication to refresh
+ *       session tokens. Caching reduces the number of Route 53 DNS calls,
+ *       which is especially beneficial when authentication is retried
+ *       repeatedly due to failures.</li>
  * </ul>
  *
  * <p>When no {@code host} is configured, the {@link #getRegion(String)} method
@@ -55,9 +62,10 @@ import software.amazon.awssdk.regions.Region;
 public class Route53RegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(Route53RegionProvider.class);
     private static final String HOST_KEY = "host";
+
     private static final String REFRESH_SECONDS_KEY = "refresh.seconds";
     private static final String REGION_PREFIX = "region.";
-    private static final long DEFAULT_REFRESH_SECONDS = 15;
+    private static final long DEFAULT_REFRESH_SECONDS = 60;
 
     private final String host;
     private final long refreshSeconds;
@@ -122,6 +130,20 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
         return REGION_PREFIX + host;
     }
 
+
+    /**
+     * Resolves a DNS TXT record for the given hostname using JNDI with the
+     * {@code com.sun.jndi.dns.DnsContextFactory} built-in JDK DNS provider.
+     *
+     * <p>Only the first TXT record value is used. This is intentional — the
+     * TXT record is expected to be a dedicated, environment-controlled record
+     * whose sole value is the active AWS region id. Surrounding quotes are
+     * stripped from the returned value.</p>
+     *
+     * @param lookupHost the fully-qualified hostname to query
+     * @return the TXT record value (unquoted and trimmed)
+     * @throws SdkClientException if no TXT record is found or the DNS lookup fails
+     */
     String resolveTxtRecord(String lookupHost) {
         try {
             Hashtable<String, String> env = new Hashtable<>();
