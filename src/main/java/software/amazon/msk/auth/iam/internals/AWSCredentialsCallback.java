@@ -17,8 +17,10 @@ package software.amazon.msk.auth.iam.internals;
 
 import lombok.Getter;
 import lombok.NonNull;
+import lombok.Setter;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
+import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
 
 import javax.security.auth.callback.Callback;
 
@@ -33,6 +35,9 @@ public class AWSCredentialsCallback implements Callback {
     private AwsCredentials awsCredentials = null;
     @Getter
     private Exception loadingException = null;
+    @Getter
+    @Setter
+    private ConfigurableRegionProvider customRegionProvider = null;
 
     public void setAwsCredentials(@NonNull AwsCredentials awsCredentials) {
         this.awsCredentials = awsCredentials;

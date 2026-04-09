@@ -29,6 +29,9 @@ import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
+import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
+import software.amazon.msk.auth.iam.internals.region.TestRegionProvider;
+
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
@@ -50,6 +53,8 @@ import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.times;
@@ -818,6 +823,53 @@ public class MSKCredentialProviderTest {
             assertEquals(ACCESS_KEY_VALUE, credentials.accessKeyId());
             assertEquals(SECRET_KEY_VALUE, credentials.secretAccessKey());
 
+        }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+    }
+
+    @Test
+    public void testCustomRegionProviderFromOptions() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put("awsMskRegionProvider",
+                TestRegionProvider.class.getName() + "?region=eu-central-1");
+
+        MSKCredentialProvider.ProviderBuilder builder = new MSKCredentialProvider.ProviderBuilder(optionsMap);
+        ConfigurableRegionProvider regionProvider = builder.getCustomRegionProvider();
+
+        assertNotNull(regionProvider);
+        assertTrue(regionProvider instanceof TestRegionProvider);
+        assertEquals(software.amazon.awssdk.regions.Region.EU_CENTRAL_1,
+                regionProvider.getRegion("any-host"));
+    }
+
+    @Test
+    public void testCustomRegionProviderNotConfigured() {
+        Map<String, String> optionsMap = new HashMap<>();
+
+        MSKCredentialProvider.ProviderBuilder builder = new MSKCredentialProvider.ProviderBuilder(optionsMap);
+        ConfigurableRegionProvider regionProvider = builder.getCustomRegionProvider();
+
+        assertNull(regionProvider);
+    }
+
+    @Test
+    public void testCustomRegionProviderInvalidClass() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put("awsMskRegionProvider", "com.nonexistent.FakeProvider");
+
+        MSKCredentialProvider.ProviderBuilder builder = new MSKCredentialProvider.ProviderBuilder(optionsMap);
+        assertThrows(IllegalArgumentException.class, builder::getCustomRegionProvider);
+    }
+
+    @Test
+    public void testCustomRegionProviderStoredOnProvider() {
+        runTestWithSystemPropertyCredentials(() -> {
+            Map<String, String> optionsMap = new HashMap<>();
+            optionsMap.put("awsMskRegionProvider",
+                    TestRegionProvider.class.getName() + "?region=us-west-2");
+
+            MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+            assertNotNull(provider.getCustomRegionProvider());
+            assertTrue(provider.getCustomRegionProvider() instanceof TestRegionProvider);
         }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
 }
