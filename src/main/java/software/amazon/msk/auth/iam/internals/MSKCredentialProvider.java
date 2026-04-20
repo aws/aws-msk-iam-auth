@@ -60,7 +60,6 @@ import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
-import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
 
 /**
  * This AWS Credential Provider is used to load up AWS Credentials based on options provided on the Jaas config line.
@@ -95,7 +94,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     private static final String AWS_SHOULD_USE_FIPS = "awsShouldUseFips";
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
     private static final String AWS_MAX_BACK_OFF_TIME_MS = "awsMaxBackOffTimeMs";
-    private static final String AWS_REGION_PROVIDER_DEF = "awsMskRegionProvider";
     private static final String GLOBAL_REGION = "aws-global";
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
@@ -107,8 +105,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     private final Boolean shouldDebugCreds;
     private final String stsRegion;
     private final RetryPolicy retryPolicy;
-    @Getter
-    private final ConfigurableRegionProvider customRegionProvider;
 
     public MSKCredentialProvider(Map<String, ?> options) {
         this(new ProviderBuilder(options));
@@ -116,7 +112,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
     MSKCredentialProvider(ProviderBuilder builder) {
         this(builder.getProviders(), builder.shouldDebugCreds(), builder.getStsRegion(), builder.getMaxRetries(),
-                builder.getMaxBackOffTimeMs(), builder.addDefaultProviders(), builder.getCustomRegionProvider());
+                builder.getMaxBackOffTimeMs(), builder.addDefaultProviders());
     }
 
     MSKCredentialProvider(List<AwsCredentialsProvider> providers,
@@ -124,7 +120,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                           String stsRegion,
                           int maxRetries,
                           int maxBackOffTimeMs) {
-        this(providers, shouldDebugCreds, stsRegion, maxRetries, maxBackOffTimeMs, true, null);
+        this(providers, shouldDebugCreds, stsRegion, maxRetries, maxBackOffTimeMs, true);
     }
 
     MSKCredentialProvider(List<AwsCredentialsProvider> providers,
@@ -133,16 +129,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                           int maxRetries,
                           int maxBackOffTimeMs,
                           boolean addDefaultProviders) {
-        this(providers, shouldDebugCreds, stsRegion, maxRetries, maxBackOffTimeMs, addDefaultProviders, null);
-    }
-
-    MSKCredentialProvider(List<AwsCredentialsProvider> providers,
-                          Boolean shouldDebugCreds,
-                          String stsRegion,
-                          int maxRetries,
-                          int maxBackOffTimeMs,
-                          boolean addDefaultProviders,
-                          ConfigurableRegionProvider customRegionProvider) {
         AwsCredentialsProviderChain.Builder chain = AwsCredentialsProviderChain.builder();
         chain.credentialsProviders(providers);
         if (addDefaultProviders) {
@@ -155,7 +141,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             .collect(Collectors.toList());
         this.shouldDebugCreds = shouldDebugCreds;
         this.stsRegion = stsRegion;
-        this.customRegionProvider = customRegionProvider;
         BackoffStrategy backoffStrategy = FullJitterBackoffStrategy.builder()
             .baseDelay(BASE_DELAY)
             .maxBackoffTime(Duration.ofMillis(maxBackOffTimeMs))
@@ -303,23 +288,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         public String getStsRegion() {
             return Optional.ofNullable((String) optionsMap.get(AWS_STS_REGION))
                     .orElse(GLOBAL_REGION);
-        }
-
-        /**
-         * Instantiate a custom {@link ConfigurableRegionProvider} from the descriptor specified
-         * in the JAAS config option {@code awsMskRegionProvider}.
-         * The descriptor format is {@code className?param1=value1;param2=value2}.
-         *
-         * @return the custom region provider, or {@code null} if not configured.
-         */
-        public ConfigurableRegionProvider getCustomRegionProvider() {
-            ConfigurableRegionProvider customRegionProvider = Optional.ofNullable((String) optionsMap.get(AWS_REGION_PROVIDER_DEF))
-                    .map(ConfigurableRegionProvider::getInstance)
-                    .orElse(null);
-            if (customRegionProvider != null){
-                log.info("Custom region provider defined: {}", customRegionProvider.getClass());
-            }
-            return customRegionProvider;
         }
 
         public int getMaxRetries() {

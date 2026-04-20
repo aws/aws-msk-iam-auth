@@ -141,8 +141,7 @@ public class IAMSaslClient implements SaslClient {
             //Generate the signed payload
             final byte[] response = payloadGenerator.signedPayload(
                     AuthenticationRequestParams
-                            .create(serverName, callback.getAwsCredentials(), UserAgentUtils.getUserAgentValue(),
-                                    callback.getCustomRegionProvider()));
+                            .create(serverName, callback.getAwsCredentials(), UserAgentUtils.getUserAgentValue()));
             //transition to the state waiting to receive server response.
             setState(State.RECEIVE_SERVER_RESPONSE);
             return response;
