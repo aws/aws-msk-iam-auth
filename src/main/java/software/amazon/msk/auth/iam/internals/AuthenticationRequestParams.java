@@ -22,7 +22,6 @@ import lombok.NonNull;
 
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
 import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 
 /**
@@ -55,14 +54,7 @@ public class AuthenticationRequestParams {
     public static AuthenticationRequestParams create(@NonNull String host,
         AwsCredentials credentials,
         @NonNull String userAgent) throws IllegalArgumentException {
-        return create(host, credentials, userAgent, null);
-    }
-
-    public static AuthenticationRequestParams create(@NonNull String host,
-        AwsCredentials credentials,
-        @NonNull String userAgent,
-        ConfigurableRegionProvider regionProvider) throws IllegalArgumentException {
-        Region region = RegionUtils.extractRegionFromHost(host, regionProvider);
+        Region region = RegionUtils.extractRegionFromHost(host);
         if (region == null) {
             throw new IllegalArgumentException("Host " + host + " does not belong to a valid region.");
         }

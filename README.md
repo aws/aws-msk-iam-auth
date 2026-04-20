@@ -46,7 +46,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>2.3.6</version>
+      <version>2.3.5</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -190,57 +190,6 @@ sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required awsMaxRetr
 This sets the maximum number of retries to `7` and the maximum back off time to `500 ms`.
 
 The retries can be turned off completely by setting `awsMaxRetries` to `"0"`.
-
-### Custom Region Provider
-
-By default, the library extracts the AWS region from the MSK broker hostname. If the region cannot be determined from the hostname, it falls back to the `DefaultAwsRegionProviderChain`.
-
-You can override this behavior by specifying a custom region provider via the `awsMskRegionProvider` JAAS config option. The value is a descriptor string in the format `className?param1=value1;param2=value2`. The referenced class must implement the `ConfigurableRegionProvider` interface and provide a constructor that accepts a `Map<String, String>`.
-
-```properties
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
-  awsMskRegionProvider="software.amazon.msk.auth.iam.internals.region.Route53RegionProvider?host=region.my-cluster.example.com;refresh.seconds=60";
-```
-
-The library ships with `Route53RegionProvider`, which resolves the region by performing a DNS TXT record lookup. It accepts the following optional parameters:
-- `host` — when provided, it is used directly as the DNS lookup name. When omitted, the broker hostname is prefixed with `region.` to form the lookup name (e.g. `region.broker.example.com`).
-- `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and resolve DNS on every call.
-
-The TXT record value is expected to contain a valid AWS region id (e.g. `us-east-1`).
-
-If the custom region provider returns null or throws an exception, a warning is logged and the library falls back to the `DefaultAwsRegionProviderChain`.
-
-You can also implement your own provider by implementing the `ConfigurableRegionProvider` interface:
-
-```java
-package com.example;
-
-import java.util.Map;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
-
-public class MyRegionProvider implements ConfigurableRegionProvider {
-    public MyRegionProvider(Map<String, String> config) {
-        // initialize from config params
-    }
-
-    @Override
-    public Region getRegion() {
-        return getRegion(null);
-    }
-
-    @Override
-    public Region getRegion(String host) {
-        return Region.of("eu-west-1");
-    }
-}
-```
-
-Then reference it in your JAAS config:
-```properties
-sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
-  awsMskRegionProvider="com.example.MyRegionProvider?myParam=myValue";
-```
 
 
 ## Setting EKS Service Account
@@ -617,12 +566,6 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
-
-### Release 2.3.6
-- Add `awsMskRegionProvider` JAAS config option for custom region resolution via `ConfigurableRegionProvider` interface
-- Add built-in `Route53RegionProvider` that resolves regions from DNS TXT records
-- Graceful fallback to `DefaultAwsRegionProviderChain` when custom region provider fails or returns null
-- Remove unused `DynamicAwsRegionProviderChain` class
 
 ### Release 2.3.5
 - Upgrade AWS SDK version to address CVE-2025-58056 and CVE-2025-58057
