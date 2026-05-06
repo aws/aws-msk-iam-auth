@@ -18,12 +18,13 @@ package software.amazon.msk.auth.iam.internals;
 import org.junit.jupiter.api.BeforeEach;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.junit.jupiter.api.Test;
 import software.amazon.msk.auth.iam.internals.IAMSaslClient.ClassLoaderAwareIAMSaslClientFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import static java.util.Collections.emptyMap;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -91,9 +92,9 @@ public class IAMSaslClientTest {
         }, accessKey, secretKey);
     }
 
-    private byte [] getServerResponse(String version, String requestId) throws JsonProcessingException {
+    private byte [] getServerResponse(String version, String requestId) throws JacksonException {
         AuthenticationResponse response = new AuthenticationResponse(version, requestId);
-        return new ObjectMapper().writeValueAsBytes(response);
+        return JsonMapper.builder().build().writeValueAsBytes(response);
     }
 
     @Test
@@ -179,8 +180,9 @@ public class IAMSaslClientTest {
     private byte[] getResponseWithInvalidVersion() {
         AuthenticationResponse response = new AuthenticationResponse(RESPONSE_VERSION, "TEST_REQUEST_ID");
         try {
-            return new ObjectMapper().writeValueAsString(response).replaceAll(RESPONSE_VERSION,"INVALID_VERSION").getBytes();
-        } catch (JsonProcessingException e) {
+            ObjectMapper mapper = JsonMapper.builder().build();
+            return mapper.writeValueAsString(response).replaceAll(RESPONSE_VERSION,"INVALID_VERSION").getBytes();
+        } catch (JacksonException e) {
             throw new RuntimeException("Test failed", e);
         }
     }

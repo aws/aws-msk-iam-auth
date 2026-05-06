@@ -15,8 +15,6 @@
 */
 package software.amazon.msk.auth.iam.internals;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.io.IOException;
 
 import java.text.ParseException;
@@ -27,6 +25,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import software.amazon.awssdk.http.auth.aws.internal.signer.util.SignerConstant;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -56,7 +56,7 @@ public final class SignedPayloadValidatorUtils {
 
     public static void validatePayload(byte[] payload, AuthenticationRequestParams params)
             throws IOException, ParseException {
-        ObjectMapper mapper = new ObjectMapper();
+        ObjectMapper mapper = JsonMapper.builder().build();
         Map<String, String> propertyMap = (Map<String, String>) mapper.readValue(payload, Map.class);
 
         assertEquals(10, propertyMap.size());

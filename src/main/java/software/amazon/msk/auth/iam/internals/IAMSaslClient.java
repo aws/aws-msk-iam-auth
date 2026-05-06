@@ -17,11 +17,13 @@ package software.amazon.msk.auth.iam.internals;
 
 import software.amazon.msk.auth.iam.IAMClientCallbackHandler;
 import software.amazon.msk.auth.iam.IAMLoginModule;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
 import org.apache.kafka.common.errors.IllegalSaslStateException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import javax.security.auth.callback.Callback;
 import javax.security.auth.callback.CallbackHandler;
@@ -109,7 +111,7 @@ public class IAMSaslClient implements SaslClient {
         } catch (SaslException se) {
             setState(State.FAILED);
             throw se;
-        } catch (IOException | IllegalArgumentException | UnsupportedCallbackException e) {
+        } catch (IOException | IllegalArgumentException | UnsupportedCallbackException | JacksonException e) {
             setState(State.FAILED);
             throw new SaslException("Exception while evaluating challenge", e);
         } finally {
@@ -122,7 +124,7 @@ public class IAMSaslClient implements SaslClient {
     private void handleServerResponse(byte[] challenge) throws IOException {
         //If we got a non-empty server challenge, then the authentication succeeded on the server.
         //Deserialize and log the server response as necessary.
-        ObjectMapper mapper = new ObjectMapper();
+        ObjectMapper mapper = JsonMapper.builder().build();
         AuthenticationResponse response = mapper.readValue(challenge, AuthenticationResponse.class);
         if (response == null) {
             throw new SaslException("Invalid response from server ");
