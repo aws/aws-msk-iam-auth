@@ -42,10 +42,10 @@ import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.regions.providers.AwsRegionProvider;
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.msk.auth.iam.internals.AWS4SignedPayloadGenerator;
 import software.amazon.msk.auth.iam.internals.AuthenticationRequestParams;
+import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
 import software.amazon.msk.auth.iam.internals.MSKCredentialProvider;
 import software.amazon.msk.auth.iam.internals.UserAgentUtils;
 
@@ -62,7 +62,7 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
     private final AWS4SignedPayloadGenerator aws4Signer = new AWS4SignedPayloadGenerator();
 
     private AwsCredentialsProvider credentialsProvider;
-    private AwsRegionProvider awsRegionProvider;
+    private ConfigurableRegionProvider awsRegionProvider;
     private boolean configured = false;
 
     /**
@@ -85,10 +85,30 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
                         .equals(j.getLoginModuleName()))
                 .findFirst();
 
-        credentialsProvider = configEntry.map(c -> (AwsCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
-                .orElse(DefaultCredentialsProvider.create());
+        credentialsProvider = configEntry.map(c -> {
+            MSKCredentialProvider mskProvider = new MSKCredentialProvider(c.getOptions());
+            ConfigurableRegionProvider custom = mskProvider.getCustomRegionProvider();
+            if (custom != null) {
+                awsRegionProvider = custom;
+            }
+            return (AwsCredentialsProvider) mskProvider;
+        }).orElse(DefaultCredentialsProvider.create());
 
-        awsRegionProvider = new DefaultAwsRegionProviderChain();
+        if (awsRegionProvider == null) {
+            // Wrap DefaultAwsRegionProviderChain as a ConfigurableRegionProvider fallback
+            final DefaultAwsRegionProviderChain defaultChain = new DefaultAwsRegionProviderChain();
+            awsRegionProvider = new ConfigurableRegionProvider() {
+                @Override
+                public Region getRegion(String host) {
+                    return defaultChain.getRegion();
+                }
+
+                @Override
+                public Region getRegion() {
+                    return defaultChain.getRegion();
+                }
+            };
+        }
         configured = true;
     }
 

@@ -32,6 +32,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
+
 /**
  * This client callback handler is used to extract AWSCredentials.
  * The credentials are based on JaasConfig options passed to {@link IAMLoginModule}.
@@ -41,6 +43,7 @@ import java.util.Optional;
 public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger log = LoggerFactory.getLogger(IAMClientCallbackHandler.class);
     private AwsCredentialsProvider provider;
+    private ConfigurableRegionProvider customRegionProvider;
 
     @Override
     public void configure(Map<String, ?> configs,
@@ -51,8 +54,14 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         }
         final Optional<AppConfigurationEntry> configEntry = jaasConfigEntries.stream()
                 .filter(j -> IAMLoginModule.class.getCanonicalName().equals(j.getLoginModuleName())).findFirst();
-        provider = configEntry.map(c -> (AwsCredentialsProvider) new MSKCredentialProvider(c.getOptions()))
-                .orElse(DefaultCredentialsProvider.create());
+        configEntry.ifPresent(c -> {
+            MSKCredentialProvider mskProvider = new MSKCredentialProvider(c.getOptions());
+            provider = mskProvider;
+            customRegionProvider = mskProvider.getCustomRegionProvider();
+        });
+        if (provider == null) {
+            provider = DefaultCredentialsProvider.create();
+        }
     }
 
     @Override
@@ -97,6 +106,7 @@ public class IAMClientCallbackHandler implements AuthenticateCallbackHandler {
         }
         try {
             callback.setAwsCredentials(provider.resolveCredentials());
+            callback.setCustomRegionProvider(customRegionProvider);
         } catch (Exception e) {
             callback.setLoadingException(e);
         }
