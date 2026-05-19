@@ -55,7 +55,7 @@ public interface ConfigurableRegionProvider extends AwsRegionProvider {
      *         the class cannot be instantiated
      */
     static ConfigurableRegionProvider getInstance(String descriptor) {
-        if (descriptor == null || descriptor.isBlank()) {
+        if (descriptor == null || descriptor.trim().isEmpty()) {
             throw new IllegalArgumentException("Region provider descriptor must not be null or blank");
         }
 
@@ -85,9 +85,9 @@ public interface ConfigurableRegionProvider extends AwsRegionProvider {
         }
     }
 
-    private static Map<String, String> parseParams(String queryString) {
+    static Map<String, String> parseParams(String queryString) {
         Map<String, String> params = new LinkedHashMap<>();
-        if (queryString == null || queryString.isBlank()) {
+        if (queryString == null || queryString.trim().isEmpty()) {
             return params;
         }
         for (String pair : queryString.split(";")) {
