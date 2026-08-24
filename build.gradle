@@ -5,7 +5,7 @@ plugins {
     id 'maven-publish'
     id 'io.github.gradle-nexus.publish-plugin' version '1.1.0'
     id 'signing'
-    id 'org.owasp.dependencycheck' version '7.1.0.1'
+    id 'org.owasp.dependencycheck' version '13.0.0'
 }
 
 
@@ -104,6 +104,23 @@ test {
     useJUnitPlatform {
         excludeTags 'ignored'
     }
+}
+
+dependencyCheck {
+    // dependency-check 9.0.0 replaced the retired NVD data feeds with the NVD API.
+    // A key is required in practice: without one the client fails the update with
+    // "Invalid API Key, length of 0 too short" rather than falling back to
+    // unauthenticated access. Request a key at
+    // https://nvd.nist.gov/developers/request-an-api-key and supply it as
+    // -PnvdApiKey=<key> or via the NVD_API_KEY environment variable. Only assign it
+    // when a value is present so the build does not inject an empty string.
+    nvd {
+        def key = project.findProperty('nvdApiKey') ?: System.getenv('NVD_API_KEY')
+        if (key) {
+            apiKey = key
+        }
+    }
+    formats = ['HTML', 'JSON']
 }
 
 publishing {

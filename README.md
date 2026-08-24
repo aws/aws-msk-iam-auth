@@ -33,11 +33,16 @@ The generated uber jar file can also be found at: `build/libs/`. At runtime, the
  client library and the `sl4j-api` library on the classpath. 
 
 ## Validating secure dependencies
-To ensure no security vulnerabilities in the dependency libraries, run the following.
+Dependency vulnerability scanning is part of the release process rather than part of `build`,
+so it does not need to be run for ordinary contributions.
 
- `gradle dependencyCheckAnalyze`
+The scan requires an NVD API key. Request one at
+https://nvd.nist.gov/developers/request-an-api-key, then run:
 
-If the above reports any vulnerabilities, upgrade dependencies to use the respective latest versions.
+ `gradle dependencyCheckAnalyze -PnvdApiKey=<key>`
+
+The key can also be supplied through the `NVD_API_KEY` environment variable. If the scan reports
+vulnerabilities, upgrade the affected dependencies to the respective latest versions.
 
 ## Using the Amazon MSK Library for IAM Authentication
 The recommended way to use this library is to consume it from maven central while building a Kafka client application.
