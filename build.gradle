@@ -64,12 +64,9 @@ dependencies {
 
     runtimeOnly('software.amazon.awssdk:apache5-client')
 
-    // apache5-client 2.51.2 resolves httpclient5 5.6.2, which carries CVE-2026-64607
-    // (connection leak on an unsupported Content-Encoding response header, fixed in
-    // 5.6.3) and CVE-2026-71290 (hostname verification bypass, fixed in 5.6.4 and
-    // applicable only to the async client, which this library never constructs).
-    // Raise the floor to 5.6.4 rather than adding a direct dependency, so the SDK
-    // continues to own the coordinate once its BOM catches up.
+    // The SDK's BOM currently resolves httpclient5 below the 5.6.4 floor. Constrain
+    // it here rather than adding a direct dependency, so the SDK keeps owning the
+    // coordinate; remove this once the BOM resolves 5.6.4 or later on its own.
     constraints {
         implementation('org.apache.httpcomponents.client5:httpclient5:5.6.4') {
             because 'CVE-2026-64607 and CVE-2026-71290 are fixed in 5.6.4'
@@ -107,13 +104,8 @@ test {
 }
 
 dependencyCheck {
-    // dependency-check 9.0.0 replaced the retired NVD data feeds with the NVD API.
-    // A key is required in practice: without one the client fails the update with
-    // "Invalid API Key, length of 0 too short" rather than falling back to
-    // unauthenticated access. Request a key at
-    // https://nvd.nist.gov/developers/request-an-api-key and supply it as
-    // -PnvdApiKey=<key> or via the NVD_API_KEY environment variable. Only assign it
-    // when a value is present so the build does not inject an empty string.
+    // The NVD API rejects an empty string as an invalid key, so only set apiKey when
+    // a value is actually present. See the README for how to obtain and pass a key.
     nvd {
         def key = project.findProperty('nvdApiKey') ?: System.getenv('NVD_API_KEY')
         if (key) {
