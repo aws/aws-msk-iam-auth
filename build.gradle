@@ -52,7 +52,7 @@ configurations.all {
 }
 
 dependencies {
-    compileOnly('org.apache.kafka:kafka-clients:2.8.1')
+    compileOnly('org.apache.kafka:kafka-clients:3.9.2')
     // aws sdk imports.
     implementation(platform('software.amazon.awssdk:bom:2.51.2'))
     implementation('software.amazon.awssdk:auth')
@@ -74,6 +74,10 @@ dependencies {
     }
 
     //test dependencies
+    // Deliberately older than the compileOnly pin above: the customer supplies
+    // kafka-clients at runtime, so running the suite against an old client is
+    // the build's only automated backward-compatibility check. Do not align it
+    // with the compile version.
     testImplementation('org.apache.kafka:kafka-clients:2.2.1')
     testImplementation('org.junit.jupiter:junit-jupiter-api:5.7.0')
     testImplementation('org.apache.commons:commons-lang3:3.11')
@@ -112,6 +116,12 @@ dependencyCheck {
             apiKey = key
         }
     }
+    // The release process requires zero Critical or High findings before
+    // publishing. 7.0 is the lower bound of the High severity band in the CVSS
+    // v3.1 qualitative rating scale (FIRST specification, section 5), so failing
+    // at >= 7 enforces exactly that bar. The plugin's own default (11) is above
+    // the 0-10 CVSS range and can never fail a build.
+    failBuildOnCVSS = 7
     formats = ['HTML', 'JSON']
 }
 

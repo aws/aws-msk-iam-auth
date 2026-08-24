@@ -41,8 +41,9 @@ https://nvd.nist.gov/developers/request-an-api-key, then run:
 
  `gradle dependencyCheckAnalyze -PnvdApiKey=<key>`
 
-The key can also be supplied through the `NVD_API_KEY` environment variable. If the scan reports
-vulnerabilities, upgrade the affected dependencies to the respective latest versions.
+The key can also be supplied through the `NVD_API_KEY` environment variable. The scan fails on
+any finding with a CVSS score of 7.0 or above; if it reports vulnerabilities, upgrade the
+affected dependencies to the respective latest versions.
 
 ## Using the Amazon MSK Library for IAM Authentication
 The recommended way to use this library is to consume it from maven central while building a Kafka client application.
