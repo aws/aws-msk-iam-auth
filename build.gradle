@@ -42,18 +42,39 @@ def readVersion() {
 version = readVersion()
 group "software.amazon.msk"
 
+// netty-nio-client is the SDK's asynchronous HTTP client. This library constructs
+// only synchronous clients, so it is never instantiated. Several SDK service
+// modules declare it transitively (sso, ssooidc and sts all do), so the exclusion
+// has to be configuration-wide to take effect. Remove this if an asynchronous SDK
+// client is ever introduced here.
+configurations.all {
+    exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+}
+
 dependencies {
     compileOnly('org.apache.kafka:kafka-clients:2.8.1')
     // aws sdk imports.
-    implementation(platform('software.amazon.awssdk:bom:2.44.12'))
+    implementation(platform('software.amazon.awssdk:bom:2.51.2'))
     implementation('software.amazon.awssdk:auth')
     implementation('software.amazon.awssdk:sso')
     implementation('software.amazon.awssdk:ssooidc')
     implementation('software.amazon.awssdk:sts')
-    implementation('com.fasterxml.jackson.core:jackson-databind:2.18.3')
-    implementation('org.slf4j:slf4j-api:1.7.25')
+    implementation('com.fasterxml.jackson.core:jackson-databind:2.22.1')
+    implementation('org.slf4j:slf4j-api:1.7.36')
 
-    runtimeOnly('software.amazon.awssdk:apache-client')
+    runtimeOnly('software.amazon.awssdk:apache5-client')
+
+    // apache5-client 2.51.2 resolves httpclient5 5.6.2, which carries CVE-2026-64607
+    // (connection leak on an unsupported Content-Encoding response header, fixed in
+    // 5.6.3) and CVE-2026-71290 (hostname verification bypass, fixed in 5.6.4 and
+    // applicable only to the async client, which this library never constructs).
+    // Raise the floor to 5.6.4 rather than adding a direct dependency, so the SDK
+    // continues to own the coordinate once its BOM catches up.
+    constraints {
+        implementation('org.apache.httpcomponents.client5:httpclient5:5.6.4') {
+            because 'CVE-2026-64607 and CVE-2026-71290 are fixed in 5.6.4'
+        }
+    }
 
     //test dependencies
     testImplementation('org.apache.kafka:kafka-clients:2.2.1')
