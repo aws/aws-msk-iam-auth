@@ -47,8 +47,13 @@ group "software.amazon.msk"
 // modules declare it transitively (sso, ssooidc and sts all do), so the exclusion
 // has to be configuration-wide to take effect. Remove this if an asynchronous SDK
 // client is ever introduced here.
+// apache-client (the HttpClient 4.x implementation) is excluded so the classpath
+// can never carry two synchronous SdkHttpService implementations: at the current
+// BOM the service modules bring apache5-client, but an older or partially reverted
+// BOM would reintroduce apache-client transitively alongside it.
 configurations.all {
     exclude group: 'software.amazon.awssdk', module: 'netty-nio-client'
+    exclude group: 'software.amazon.awssdk', module: 'apache-client'
 }
 
 dependencies {
@@ -64,9 +69,14 @@ dependencies {
 
     runtimeOnly('software.amazon.awssdk:apache5-client')
 
-    // The SDK's BOM currently resolves httpclient5 below the 5.6.4 floor. Constrain
-    // it here rather than adding a direct dependency, so the SDK keeps owning the
-    // coordinate; remove this once the BOM resolves 5.6.4 or later on its own.
+    // Declared as a real dependency (not only a constraint) so the 5.6.4 floor lands
+    // in the published POM's <dependencies> and binds for Maven consumers of the thin
+    // jar: Maven does not honour a transitive POM's <dependencyManagement> deeper in
+    // the graph, so a constraint alone covers only Gradle consumers and the uber jar.
+    runtimeOnly('org.apache.httpcomponents.client5:httpclient5:5.6.4')
+
+    // The SDK's BOM currently resolves httpclient5 below the 5.6.4 floor. The
+    // constraint keeps Gradle's resolution aligned with the declaration above.
     constraints {
         implementation('org.apache.httpcomponents.client5:httpclient5:5.6.4') {
             because 'CVE-2026-64607 and CVE-2026-71290 are fixed in 5.6.4'
