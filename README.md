@@ -37,13 +37,13 @@ Dependency vulnerability scanning is part of the release process rather than par
 so it does not need to be run for ordinary contributions.
 
 The scan requires an NVD API key. Request one at
-https://nvd.nist.gov/developers/request-an-api-key, then run:
+https://nvd.nist.gov/developers/request-an-api-key, then supply it through the
+`NVD_API_KEY` environment variable:
 
- `gradle dependencyCheckAnalyze -PnvdApiKey=<key>`
+ `NVD_API_KEY=<key> gradle dependencyCheckAnalyze`
 
-The key can also be supplied through the `NVD_API_KEY` environment variable. The scan fails on
-any finding with a CVSS score of 7.0 or above; if it reports vulnerabilities, upgrade the
-affected dependencies to the respective latest versions.
+The scan fails on any finding with a CVSS score of 7.0 or above; if it reports
+vulnerabilities, upgrade the affected dependencies to the respective latest versions.
 
 ## Using the Amazon MSK Library for IAM Authentication
 The recommended way to use this library is to consume it from maven central while building a Kafka client application.
