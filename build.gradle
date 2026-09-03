@@ -61,6 +61,7 @@ dependencies {
     // aws sdk imports.
     implementation(platform('software.amazon.awssdk:bom:2.51.2'))
     implementation('software.amazon.awssdk:auth')
+    implementation('software.amazon.awssdk:regions')
     implementation('software.amazon.awssdk:sso')
     implementation('software.amazon.awssdk:ssooidc')
     implementation('software.amazon.awssdk:sts')
