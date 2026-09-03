@@ -52,7 +52,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>2.3.6</version>
+      <version>2.3.8</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -623,6 +623,21 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 ```
    
 ## Release Notes
+
+### Release 2.3.8
+- Fix signing-region resolution for cluster names containing an AWS region id: the region is now anchored to the endpoint DNS suffix instead of matched as an unanchored substring (#245)
+- Upgrade the AWS SDK BOM from 2.44.12 to 2.51.2
+- Update `jackson-databind` to 2.22.1, resolving CVE-2026-54512, CVE-2026-54513, CVE-2026-54514 and CVE-2026-54515
+- Switch the synchronous HTTP client from `apache-client` to `apache5-client`, replacing Apache HttpClient 4.x with 5.x and removing `commons-logging` from the dependency tree
+- Constrain `httpclient5` to 5.6.4, resolving CVE-2026-64607 and CVE-2026-71290
+- Exclude the unused `netty-nio-client` asynchronous HTTP client, which this library never instantiates, reducing the uber jar from roughly 14.4 MB to 10.2 MB and removing all 36 CVEs reported against Netty 4.1.133.Final across its ten modules
+- Update `slf4j-api` to 1.7.36
+- Raise the `kafka-clients` compile floor from 2.8.1 to 3.9.2
+- Upgrade the OWASP `dependency-check` plugin from 7.1.0.1 to 13.0.0. Releases 9.0.0 and later use the NVD API in place of the retired NVD data feeds, which the previous version could no longer reach
+- The `jdk8-all` classifier is not published in this release. The 2.3.5 through 2.3.7 `jdk8-all` jars contained Java 17 bytecode and were not usable on Java 8 or Java 11 runtimes. The next release is planned to restore Java 8 and Java 11 compatibility in the default artifact itself, removing the need for a separate classifier.
+
+### Release 2.3.7
+- Upgrade AWS SDK version to address Netty CVEs
 
 ### Release 2.3.6
 - Add `awsMskRegionProvider` JAAS config option for custom region resolution via `ConfigurableRegionProvider` interface
