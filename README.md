@@ -634,7 +634,6 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 - Update `slf4j-api` to 1.7.36
 - Raise the `kafka-clients` compile floor from 2.8.1 to 3.9.2
 - Upgrade the OWASP `dependency-check` plugin from 7.1.0.1 to 13.0.0. Releases 9.0.0 and later use the NVD API in place of the retired NVD data feeds, which the previous version could no longer reach
-- The `jdk8-all` classifier is not published in this release. The 2.3.5 through 2.3.7 `jdk8-all` jars contained Java 17 bytecode and were not usable on Java 8 or Java 11 runtimes. The next release is planned to restore Java 8 and Java 11 compatibility in the default artifact itself, removing the need for a separate classifier.
 
 ### Release 2.3.7
 - Upgrade AWS SDK version to address Netty CVEs
