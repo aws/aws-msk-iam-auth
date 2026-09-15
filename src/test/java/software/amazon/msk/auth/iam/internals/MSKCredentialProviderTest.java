@@ -44,6 +44,7 @@ import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.profiles.ProfileFile;
 import software.amazon.awssdk.regions.Region;
@@ -74,6 +75,7 @@ public class MSKCredentialProviderTest {
     private static final String TEST_ROLE_SESSION_NAME = "TEST_ROLE_SESSION_NAME";
     private static final String SESSION_TOKEN = "SESSION_TOKEN";
     private static final String AWS_ROLE_ARN = "awsRoleArn";
+    private static final String AWS_STS_REGION = "awsStsRegion";
     private static final String AWS_ROLE_EXTERNAL_ID = "awsRoleExternalId";
     private static final String AWS_ROLE_ACCESS_KEY_ID = "awsRoleAccessKeyId";
     private static final String AWS_ROLE_SECRET_ACCESS_KEY = "awsRoleSecretAccessKey";
@@ -688,6 +690,100 @@ public class MSKCredentialProviderTest {
         Mockito.verify(mockStsRoleProvider, times(numExceptions + 1)).resolveIdentity();
         Mockito.verify(mockStsRoleProvider, times(1)).close();
         Mockito.verifyNoMoreInteractions(mockStsRoleProvider);
+    }
+
+    /**
+     * With dualstack enabled and no awsStsRegion configured, provider construction
+     * should fail fast with an actionable message instead of later dialing the
+     * nonexistent sts.aws-global.api.aws hostname (issue #248).
+     */
+    @Test
+    public void testDualstackWithDefaultGlobalStsRegionFailsFast() {
+        System.setProperty("aws.useDualstackEndpoint", "true");
+        try {
+            Map<String, String> optionsMap = new HashMap<>();
+            optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+            SdkClientException e = assertThrows(SdkClientException.class,
+                    () -> new MSKCredentialProvider(optionsMap));
+            assertTrue(e.getMessage().contains("awsStsRegion"));
+        } finally {
+            System.clearProperty("aws.useDualstackEndpoint");
+        }
+    }
+
+    /**
+     * With dualstack enabled and an explicit awsStsRegion, the STS client must build
+     * without an endpoint override so the SDK can resolve the dualstack endpoint
+     * (previously rejected with "Dualstack and custom endpoint are not supported").
+     */
+    @Test
+    public void testDualstackWithExplicitStsRegionBuildsProvider() {
+        System.setProperty("aws.useDualstackEndpoint", "true");
+        try {
+            Map<String, String> optionsMap = new HashMap<>();
+            optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+            optionsMap.put(AWS_STS_REGION, "us-east-1");
+            MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+            provider.close();
+        } finally {
+            System.clearProperty("aws.useDualstackEndpoint");
+        }
+    }
+
+    /**
+     * The fallback-warning wrapper must delegate resolution transparently and
+     * propagate failures unchanged (both sync and async paths), so chain semantics
+     * are preserved while the fallback is logged.
+     */
+    @Test
+    public void testFallbackWarningWrapperDelegatesAndRethrows() {
+        StsAssumeRoleCredentialsProvider delegate = Mockito.mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(delegate.resolveCredentials())
+                .thenThrow(SdkClientException.create("sts failure"));
+        CompletableFuture<AwsCredentialsIdentity> failed = new CompletableFuture<>();
+        failed.completeExceptionally(SdkClientException.create("sts failure"));
+        Mockito.when(delegate.resolveIdentity()).thenAnswer(i -> failed);
+
+        MSKCredentialProvider.FallbackWarningCredentialsProvider wrapper =
+                new MSKCredentialProvider.FallbackWarningCredentialsProvider(delegate);
+
+        assertThrows(SdkClientException.class, wrapper::resolveCredentials);
+        assertTrue(wrapper.resolveIdentity().isCompletedExceptionally());
+
+        wrapper.close();
+        Mockito.verify(delegate, times(1)).close();
+    }
+
+    /**
+     * When the configured role provider fails and default providers are enabled,
+     * the chain must still fall back and resolve credentials (behavior unchanged
+     * by the warning wrapper).
+     */
+    @Test
+    public void testChainStillFallsBackToDefaultProvidersThroughWrapper() {
+        StsAssumeRoleCredentialsProvider mockStsRoleProvider = Mockito
+                .mock(StsAssumeRoleCredentialsProvider.class);
+        Mockito.when(mockStsRoleProvider.resolveIdentity())
+                .thenAnswer(i -> {
+                    CompletableFuture<AwsCredentialsIdentity> f = new CompletableFuture<>();
+                    f.completeExceptionally(SdkClientException.create("sts failure"));
+                    return f;
+                });
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = getProviderBuilder(mockStsRoleProvider, optionsMap,
+                "aws-msk-iam-auth");
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return () -> AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN);
+            }
+        };
+
+        AwsCredentials credentials = provider.resolveCredentials();
+        validateBasicSessionCredentials(credentials);
+        provider.close();
     }
 
     private MSKCredentialProvider.ProviderBuilder getProviderBuilder(StsAssumeRoleCredentialsProvider mockStsRoleProvider,

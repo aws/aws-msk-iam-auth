@@ -58,7 +58,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity;
 import java.util.stream.Collectors;
 
 import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
@@ -301,13 +303,33 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             try {
                 return delegate.resolveCredentials();
             } catch (RuntimeException e) {
-                log.warn("Configured credential provider {} failed to resolve credentials; the provider chain"
-                        + " will fall back to a default provider, which may authenticate as a DIFFERENT IAM"
-                        + " identity than the one configured (e.g. via awsRoleArn). If the broker subsequently"
-                        + " returns an authorization error, this fallback is the likely cause.",
-                        delegate.getClass().getSimpleName(), e);
+                warnFallback(e);
                 throw e;
             }
+        }
+
+        @Override
+        public CompletableFuture<? extends AwsCredentialsIdentity> resolveIdentity() {
+            CompletableFuture<? extends AwsCredentialsIdentity> future;
+            try {
+                future = delegate.resolveIdentity();
+            } catch (RuntimeException e) {
+                warnFallback(e);
+                throw e;
+            }
+            return future.whenComplete((identity, throwable) -> {
+                if (throwable != null) {
+                    warnFallback(throwable);
+                }
+            });
+        }
+
+        private void warnFallback(Throwable e) {
+            log.warn("Configured credential provider {} failed to resolve credentials; the provider chain"
+                    + " will fall back to a default provider, which may authenticate as a DIFFERENT IAM"
+                    + " identity than the one configured (e.g. via awsRoleArn). If the broker subsequently"
+                    + " returns an authorization error, this fallback is the likely cause.",
+                    delegate.getClass().getSimpleName(), e);
         }
 
         @Override
