@@ -31,6 +31,7 @@ import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsProvider;
+import software.amazon.awssdk.core.SdkSystemSetting;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.retry.RetryPolicy;
@@ -144,7 +145,17 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                           boolean addDefaultProviders,
                           ConfigurableRegionProvider customRegionProvider) {
         AwsCredentialsProviderChain.Builder chain = AwsCredentialsProviderChain.builder();
-        chain.credentialsProviders(providers);
+        if (addDefaultProviders && !providers.isEmpty()) {
+            // When default providers are appended, a failure of a configured provider
+            // (e.g. the awsRoleArn STS provider) is silently swallowed by the chain,
+            // which then authenticates as an unrelated ambient identity. Wrap the
+            // configured providers so that abandonment is visible at WARN level.
+            chain.credentialsProviders(providers.stream()
+                .map(FallbackWarningCredentialsProvider::new)
+                .collect(Collectors.toList()));
+        } else {
+            chain.credentialsProviders(providers);
+        }
         if (addDefaultProviders) {
             chain.addCredentialsProvider(getDefaultProvider());
         }
@@ -271,6 +282,46 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         });
     }
 
+    /**
+     * Wraps a configured credential provider so that, when it fails, the failure is
+     * logged at WARN before the surrounding {@link AwsCredentialsProviderChain} falls
+     * through to a default provider. Without this, a failure of the configured
+     * {@code awsRoleArn} / {@code awsProfileName} provider is invisible at default log
+     * levels and the connection silently authenticates as an unrelated ambient identity.
+     */
+    static class FallbackWarningCredentialsProvider implements AwsCredentialsProvider, AutoCloseable {
+        private final AwsCredentialsProvider delegate;
+
+        FallbackWarningCredentialsProvider(AwsCredentialsProvider delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public AwsCredentials resolveCredentials() {
+            try {
+                return delegate.resolveCredentials();
+            } catch (RuntimeException e) {
+                log.warn("Configured credential provider {} failed to resolve credentials; the provider chain"
+                        + " will fall back to a default provider, which may authenticate as a DIFFERENT IAM"
+                        + " identity than the one configured (e.g. via awsRoleArn). If the broker subsequently"
+                        + " returns an authorization error, this fallback is the likely cause.",
+                        delegate.getClass().getSimpleName(), e);
+                throw e;
+            }
+        }
+
+        @Override
+        public void close() {
+            if (delegate instanceof AutoCloseable) {
+                try {
+                    ((AutoCloseable) delegate).close();
+                } catch (Exception e) {
+                    log.warn("Error closing wrapped credential provider", e);
+                }
+            }
+        }
+    }
+
     public static class ProviderBuilder {
         private final Map<String, ?> optionsMap;
 
@@ -349,12 +400,28 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         }
 
         private StsClientBuilder getStsClientBuilder(Region stsRegion, Boolean shouldUseFips) {
-            StsClientBuilder builder = StsClient.builder().region(stsRegion);
-            if (stsRegion != Region.AWS_GLOBAL && !shouldUseFips) {
-                log.debug("Using STS Endpoint override");
-                builder.endpointOverride(buildEndpointConfiguration(stsRegion));
+            if (stsRegion == Region.AWS_GLOBAL && isDualstackEnabled()) {
+                // The STS endpoint ruleset resolves aws-global + dualstack to
+                // sts.aws-global.api.aws, which does not exist in DNS. Fail fast
+                // with an actionable message instead of retrying a dead hostname.
+                throw SdkClientException.create(
+                        "Dualstack endpoints (AWS_USE_DUALSTACK_ENDPOINT / aws.useDualstackEndpoint) are not"
+                                + " supported with the default global STS endpoint. Set the awsStsRegion JAAS"
+                                + " option to a concrete region (e.g. awsStsRegion=\"us-east-1\").");
             }
-            return builder;
+            // Endpoint resolution (standard/dualstack/FIPS, regional and global) is
+            // delegated to the SDK's STS endpoint ruleset. The previous explicit
+            // endpointOverride(...) predated regional endpoint resolution in the SDK,
+            // dropped the dualstack setting when pre-resolving the URI, and made the
+            // SDK reject the client configuration whenever dualstack was enabled
+            // ("Invalid Configuration: Dualstack and custom endpoint are not supported").
+            return StsClient.builder()
+                    .region(stsRegion)
+                    .fipsEnabled(shouldUseFips);
+        }
+
+        private static boolean isDualstackEnabled() {
+            return SdkSystemSetting.AWS_USE_DUALSTACK_ENDPOINT.getBooleanValue().orElse(false);
         }
 
         private Optional<ProfileCredentialsProvider> getProfileProvider() {
