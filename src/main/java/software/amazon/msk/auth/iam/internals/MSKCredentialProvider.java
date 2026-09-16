@@ -322,9 +322,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
         private void warnFallback(Throwable e) {
             log.warn("Configured credential provider {} failed to resolve credentials; the provider chain"
-                    + " will fall back to a default provider, which may authenticate as a DIFFERENT IAM"
-                    + " identity than the one configured (e.g. via awsRoleArn). If the broker subsequently"
-                    + " returns an authorization error, this fallback is the likely cause.",
+                    + " will fall back to the next provider in the chain (another configured provider, or a"
+                    + " default provider), which may authenticate as a DIFFERENT IAM identity than the one"
+                    + " this provider was configured for. If the broker subsequently returns an authorization"
+                    + " error, this fallback is the likely cause.",
                     delegate.getClass().getSimpleName(), e);
         }
 
