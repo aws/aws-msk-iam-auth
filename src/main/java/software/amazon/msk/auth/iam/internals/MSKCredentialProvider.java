@@ -419,9 +419,16 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             // dropped the dualstack setting when pre-resolving the URI, and made the
             // SDK reject the client configuration whenever dualstack was enabled
             // ("Invalid Configuration: Dualstack and custom endpoint are not supported").
-            return StsClient.builder()
-                    .region(stsRegion)
-                    .fipsEnabled(shouldUseFips);
+            StsClientBuilder builder = StsClient.builder().region(stsRegion);
+            if (shouldUseFips) {
+                // Only set an explicit value when the JAAS option asks for FIPS.
+                // Passing fipsEnabled(false) would override ambient FIPS
+                // configuration (AWS_USE_FIPS_ENDPOINT, aws.useFipsEndpoint,
+                // use_fips_endpoint profile setting), which the ruleset honors
+                // when the builder leaves the value unset.
+                builder.fipsEnabled(true);
+            }
+            return builder;
         }
 
         private static boolean isDualstackEnabled() {
