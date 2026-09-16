@@ -144,13 +144,15 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                           ConfigurableRegionProvider customRegionProvider) {
         AwsCredentialsProviderChain.Builder chain = AwsCredentialsProviderChain.builder();
         if (addDefaultProviders && !providers.isEmpty()) {
-            // When default providers are appended, a failure of a configured provider
-            // (e.g. the awsRoleArn STS provider) is silently swallowed by the chain,
-            // which then authenticates as an unrelated ambient identity. Wrap the
-            // configured providers so that abandonment is visible at WARN level.
-            chain.credentialsProviders(providers.stream()
-                .map(FallbackWarningCredentialsProvider::new)
-                .collect(Collectors.toList()));
+            // Only the LAST configured provider's failure falls through into the
+            // default providers (fall-through between configured providers is
+            // expected configuration semantics and should not alarm). Wrap just
+            // that provider so abandonment of the configured identity in favor of
+            // an ambient default identity is visible at WARN level.
+            List<AwsCredentialsProvider> wrapped = new ArrayList<>(providers);
+            int last = wrapped.size() - 1;
+            wrapped.set(last, new FallbackWarningCredentialsProvider(wrapped.get(last)));
+            chain.credentialsProviders(wrapped);
         } else {
             chain.credentialsProviders(providers);
         }
@@ -281,7 +283,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     }
 
     /**
-     * Wraps a configured credential provider so that, when it fails, the failure is
+     * Wraps the last configured credential provider so that, when it fails, the failure is
      * logged at WARN before the surrounding {@link AwsCredentialsProviderChain} falls
      * through to a default provider. Without this, a failure of the configured
      * {@code awsRoleArn} / {@code awsProfileName} provider is invisible at default log
@@ -322,10 +324,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
         private void warnFallback(Throwable e) {
             log.warn("Configured credential provider {} failed to resolve credentials; the provider chain"
-                    + " will fall back to the next provider in the chain (another configured provider, or a"
-                    + " default provider), which may authenticate as a DIFFERENT IAM identity than the one"
-                    + " this provider was configured for. If the broker subsequently returns an authorization"
-                    + " error, this fallback is the likely cause.",
+                    + " will fall back to the default providers, which may authenticate as a DIFFERENT IAM"
+                    + " identity than the one configured. If the broker subsequently returns an authorization"
+                    + " error, this fallback is the likely cause. Set awsAddDefaultProviders=\"false\" to fail"
+                    + " fast instead of falling back.",
                     delegate.getClass().getSimpleName(), e);
         }
 
