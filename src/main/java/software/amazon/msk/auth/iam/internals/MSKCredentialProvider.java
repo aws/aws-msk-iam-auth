@@ -31,7 +31,7 @@ import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.SystemPropertyCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.WebIdentityTokenFileCredentialsProvider;
-import software.amazon.awssdk.core.SdkSystemSetting;
+import software.amazon.awssdk.awscore.endpoint.DualstackEnabledProvider;
 import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.retry.RetryPolicy;
@@ -427,9 +427,10 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 // sts.aws-global.api.aws, which does not exist in DNS. Fail fast
                 // with an actionable message instead of retrying a dead hostname.
                 throw SdkClientException.create(
-                        "Dualstack endpoints (AWS_USE_DUALSTACK_ENDPOINT / aws.useDualstackEndpoint) are not"
-                                + " supported with the default global STS endpoint. Set the awsStsRegion JAAS"
-                                + " option to a concrete region (e.g. awsStsRegion=\"us-east-1\").");
+                        "Dualstack endpoints (AWS_USE_DUALSTACK_ENDPOINT / aws.useDualstackEndpoint /"
+                                + " use_dualstack_endpoint profile setting) are not supported with the default"
+                                + " global STS endpoint. Set the awsStsRegion JAAS option to a concrete region"
+                                + " (e.g. awsStsRegion=\"us-east-1\").");
             }
             // Endpoint resolution (standard/dualstack/FIPS, regional and global) is
             // delegated to the SDK's STS endpoint ruleset. The previous explicit
@@ -443,7 +444,17 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         }
 
         private static boolean isDualstackEnabled() {
-            return SdkSystemSetting.AWS_USE_DUALSTACK_ENDPOINT.getBooleanValue().orElse(false);
+            // DualstackEnabledProvider mirrors the endpoint ruleset's resolution order:
+            // environment variable, system property, then the use_dualstack_endpoint
+            // profile file setting. Checking only SdkSystemSetting would let a
+            // profile-file-configured client bypass the fail-fast guard above.
+            // ProfileFileSupplier.defaultSupplier() is used (matching the rest of this
+            // class) instead of the SDK's statically cached default profile file.
+            return DualstackEnabledProvider.builder()
+                    .profileFile(ProfileFileSupplier.defaultSupplier())
+                    .build()
+                    .isDualstackEnabled()
+                    .orElse(false);
         }
 
         private Optional<ProfileCredentialsProvider> getProfileProvider() {

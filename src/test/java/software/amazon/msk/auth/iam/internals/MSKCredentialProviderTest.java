@@ -786,6 +786,28 @@ public class MSKCredentialProviderTest {
         provider.close();
     }
 
+    /**
+     * The dualstack guard must also detect the use_dualstack_endpoint PROFILE FILE
+     * setting, not just the environment variable / system property: the SDK endpoint
+     * ruleset honors the profile setting, so a profile-configured client would
+     * otherwise bypass the fail-fast and still dial the nonexistent global dualstack
+     * hostname.
+     */
+    @Test
+    public void testDualstackFromProfileFileWithDefaultGlobalStsRegionFailsFast() {
+        URL url = getClass().getClassLoader().getResource("profile_config_dualstack");
+        System.setProperty("aws.configFile", url.getPath());
+        try {
+            Map<String, String> optionsMap = new HashMap<>();
+            optionsMap.put(AWS_ROLE_ARN, TEST_ROLE_ARN);
+            SdkClientException e = assertThrows(SdkClientException.class,
+                    () -> new MSKCredentialProvider(optionsMap));
+            assertTrue(e.getMessage().contains("awsStsRegion"));
+        } finally {
+            System.clearProperty("aws.configFile");
+        }
+    }
+
     private MSKCredentialProvider.ProviderBuilder getProviderBuilder(StsAssumeRoleCredentialsProvider mockStsRoleProvider,
                                                                      Map<String, String> optionsMap, String s) {
         return new MSKCredentialProvider.ProviderBuilder(optionsMap) {

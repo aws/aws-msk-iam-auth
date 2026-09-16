@@ -1,0 +1,2 @@
+[default]
+use_dualstack_endpoint = true

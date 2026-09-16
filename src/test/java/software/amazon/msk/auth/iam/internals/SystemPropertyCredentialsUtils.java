@@ -42,9 +42,13 @@ public final class SystemPropertyCredentialsUtils {
         } finally {
             if (initialAccessKey != null) {
                 System.setProperty(ACCESS_KEY_PROPERTY, initialAccessKey);
+            } else {
+                System.clearProperty(ACCESS_KEY_PROPERTY);
             }
             if (initialSecretKey != null) {
                 System.setProperty(SECRET_KEY_PROPERTY, initialSecretKey);
+            } else {
+                System.clearProperty(SECRET_KEY_PROPERTY);
             }
             if (initialSessionToken != null) {
                 System.setProperty(SESSION_TOKEN_PROPERTY, initialSessionToken);
@@ -62,6 +66,10 @@ public final class SystemPropertyCredentialsUtils {
         } finally {
             if (initialProfileName != null) {
                 System.setProperty(AWS_PROFILE_SYSTEM_PROPERTY, initialProfileName);
+            } else {
+                // Previously the property was only restored when it had an initial
+                // value, leaking aws.profile into every subsequent test in the JVM.
+                System.clearProperty(AWS_PROFILE_SYSTEM_PROPERTY);
             }
         }
     }
