@@ -17,7 +17,6 @@ package software.amazon.msk.auth.iam.internals;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.net.URL;
 import java.util.Collections;
 import java.util.HashMap;
@@ -366,8 +365,6 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals(false, shouldUseFips);
                 assertEquals("eu-west-1", stsRegion);
-                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
-                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
@@ -401,8 +398,6 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
                 assertEquals(true, shouldUseFips);
-                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
-                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };
@@ -440,8 +435,6 @@ public class MSKCredentialProviderTest {
                 assertEquals(TEST_ROLE_SESSION_NAME, sessionName);
                 assertEquals("eu-west-1", stsRegion);
                 assertEquals(false, shouldUseFips);
-                URI endpointConfiguration = buildEndpointConfiguration(Region.of(stsRegion));
-                assertEquals("https://sts.eu-west-1.amazonaws.com", endpointConfiguration.toString());
                 return mockStsRoleProvider;
             }
         };

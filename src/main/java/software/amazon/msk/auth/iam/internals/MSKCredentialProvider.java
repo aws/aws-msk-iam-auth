@@ -47,19 +47,15 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.StsClientBuilder;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
-import software.amazon.awssdk.services.sts.endpoints.StsEndpointParams;
-import software.amazon.awssdk.services.sts.endpoints.StsEndpointProvider;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import software.amazon.awssdk.identity.spi.AwsCredentialsIdentity;
 import java.util.stream.Collectors;
 
@@ -404,21 +400,6 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return Optional.ofNullable(optionsMap.get(AWS_MAX_BACK_OFF_TIME_MS)).map(p -> (String) p)
                     .map(Integer::parseInt)
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
-        }
-
-        public URI buildEndpointConfiguration(Region stsRegion) {
-            StsEndpointParams params = StsEndpointParams.builder()
-                .region(stsRegion)
-                .build();
-
-            try {
-                return StsEndpointProvider.defaultProvider()
-                    .resolveEndpoint(params)
-                    .get()
-                    .url();
-            } catch (InterruptedException | ExecutionException e) {
-                throw new RuntimeException(e);
-            }
         }
 
         private StsClientBuilder getStsClientBuilder(Region stsRegion, Boolean shouldUseFips) {
