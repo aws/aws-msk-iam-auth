@@ -9,6 +9,7 @@ import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain;
 import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -227,5 +228,81 @@ public class RegionUtilsTest {
             Region region = RegionUtils.extractRegionFromHost(HOST_NO_REGION, null);
             assertEquals(Region.SA_EAST_1, region);
         }
+    }
+
+    @Test
+    public void testExtractRegionFromEndpointHostAnchorsOnPartitionSuffix() {
+        assertEquals(Region.US_WEST_2,
+                RegionUtils.extractRegionFromEndpointHost(HOST_REGION_LIKE_CLUSTER_NAME).get());
+    }
+
+    @Test
+    public void testExtractRegionFromEndpointHostEmptyForNonAwsHost() {
+        // No partition suffix to anchor on, so the anchored parse yields nothing even though a
+        // region id is present. This is what makes it safe for a region provider to call on an
+        // arbitrary hostname.
+        assertTrue(RegionUtils.extractRegionFromEndpointHost("msk.us-east-1.customer.com").isEmpty());
+    }
+
+    @Test
+    public void testExtractRegionFromEndpointHostEmptyForNull() {
+        assertTrue(RegionUtils.extractRegionFromEndpointHost(null).isEmpty());
+    }
+
+    @Test
+    public void testExtractRegionFromHostLabelsFindsRegionLabel() {
+        assertEquals(Region.US_EAST_1,
+                RegionUtils.extractRegionFromHostLabels("msk.us-east-1.customer.com").get());
+    }
+
+    @Test
+    public void testExtractRegionFromHostLabelsRequiresWholeLabel() {
+        // us-west-1 is only part of a longer label, so unlike the legacy substring scan the label
+        // scan must not match it.
+        assertTrue(RegionUtils.extractRegionFromHostLabels("demo-us-west-1-app.customer.com").isEmpty());
+    }
+
+    @Test
+    public void testExtractRegionFromHostLabelsNormalizesPortAndCase() {
+        assertEquals(Region.US_EAST_1,
+                RegionUtils.extractRegionFromHostLabels("MSK.US-EAST-1.CUSTOMER.COM.:9098").get());
+    }
+
+    @Test
+    public void testExtractRegionFromHostLabelsEmptyForNullAndNoRegion() {
+        assertTrue(RegionUtils.extractRegionFromHostLabels(null).isEmpty());
+        assertTrue(RegionUtils.extractRegionFromHostLabels("msk.customer.com").isEmpty());
+    }
+
+    @Test
+    public void testRegionFromLabelKnownRegion() {
+        assertEquals(Region.EU_WEST_1, RegionUtils.regionFromLabel("eu-west-1").get());
+    }
+
+    @Test
+    public void testRegionFromLabelRegionNewerThanSdk() {
+        assertEquals("ap-southeast-9", RegionUtils.regionFromLabel("ap-southeast-9").get().id());
+    }
+
+    @Test
+    public void testRegionFromLabelRejectsNonRegionLabels() {
+        assertTrue(RegionUtils.regionFromLabel(null).isEmpty());
+        assertTrue(RegionUtils.regionFromLabel("").isEmpty());
+        assertTrue(RegionUtils.regionFromLabel("customer").isEmpty());
+        assertTrue(RegionUtils.regionFromLabel("demo-us-west-1-app").isEmpty());
+        // A dotted string is not a single label and must never be minted as a region.
+        assertTrue(RegionUtils.regionFromLabel("msk.us-east-1").isEmpty());
+    }
+
+    @Test
+    public void testRegionFromLabelRejectsOverlongLabel() {
+        // A DNS label is at most 63 characters (RFC 1035).
+        assertTrue(RegionUtils.regionFromLabel(
+                "us-" + new String(new char[60]).replace('\0', 'a') + "-1").isEmpty());
+    }
+
+    @Test
+    public void testNormalizeHostStripsPortCaseAndRootDot() {
+        assertEquals("msk.customer.com", RegionUtils.normalizeHost("  MSK.Customer.com.:9098  "));
     }
 }
