@@ -99,7 +99,7 @@ This configuration finds IAM credentials using the [AWS Default Credentials Prov
 the Default Credential Provider Chain looks for credentials in this order:
 
 1. Environment variables: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY. 
-1. Java system properties: aws.accessKeyId and aws.secretKey. 
+1. Java system properties: aws.accessKeyId and aws.secretAccessKey (or aws.secretKey for AWS SDK v1). 
 1. Web Identity Token credentials from the environment or container.
 1. The default credential profiles file– typically located at ~/.aws/credentials (location can vary per platform), and shared by many of the AWS SDKs and by the AWS CLI.  
 You can create a credentials file by using the aws configure command provided by the AWS CLI, or you can create it by editing the file with a text editor. For information about the credentials file format, see [AWS Credentials File Format][CredsFile].
@@ -757,7 +757,7 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 [MSK]: https://aws.amazon.com/msk/
 [IAM]: https://aws.amazon.com/iam/
 [MSK_IAM]: https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html
-[DefaultCreds]: https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html
+[DefaultCreds]: https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html
 [CredsFile]: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html
 [PreSigned]: https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html
 [AwsSDK]: https://github.com/aws/aws-sdk-java
