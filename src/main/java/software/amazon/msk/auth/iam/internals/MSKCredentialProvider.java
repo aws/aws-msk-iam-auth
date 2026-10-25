@@ -156,11 +156,14 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         } else {
             chain.credentialsProviders(providers);
         }
+        List<AwsCredentialsProvider> ownedProviders = new ArrayList<>(providers);
         if (addDefaultProviders) {
-            chain.addCredentialsProvider(getDefaultProvider());
+            AwsCredentialsProvider defaultProvider = getDefaultProvider();
+            chain.addCredentialsProvider(defaultProvider);
+            ownedProviders.add(defaultProvider);
         }
         compositeDelegate = chain.build();
-        closeableProviders = providers.stream()
+        closeableProviders = ownedProviders.stream()
             .filter(p -> p instanceof AutoCloseable)
             .map(p -> (AutoCloseable) p)
             .collect(Collectors.toList());

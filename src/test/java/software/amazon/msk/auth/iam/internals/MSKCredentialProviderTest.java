@@ -154,6 +154,34 @@ public class MSKCredentialProviderTest {
     }
 
     @Test
+    public void testCloseClosesDefaultProvider() {
+        CloseTrackingProvider defaultProvider = new CloseTrackingProvider();
+        MSKCredentialProvider provider = new MSKCredentialProvider(Collections.emptyMap()) {
+            protected AwsCredentialsProvider getDefaultProvider() {
+                return defaultProvider;
+            }
+        };
+
+        provider.close();
+
+        assertEquals(1, defaultProvider.closeCount);
+    }
+
+    private static class CloseTrackingProvider implements AwsCredentialsProvider, AutoCloseable {
+        private int closeCount;
+
+        @Override
+        public AwsCredentials resolveCredentials() {
+            return AwsBasicCredentials.create("accessKey", "secretKey");
+        }
+
+        @Override
+        public void close() {
+            closeCount++;
+        }
+    }
+
+    @Test
     public void testProfileName() {
         ProfileFile profileFile = getProfileFile();
         Map<String, String> optionsMap = new HashMap<>();
@@ -285,6 +313,7 @@ public class MSKCredentialProviderTest {
         provider.close();
         Mockito.verify(mockSts, times(1)).getCallerIdentity();
         Mockito.verify(mockEcsCredsProvider, times(1)).resolveIdentity();
+        Mockito.verify(mockEcsCredsProvider, times(1)).close();
         Mockito.verifyNoMoreInteractions(mockEcsCredsProvider);
     }
 
@@ -320,6 +349,7 @@ public class MSKCredentialProviderTest {
         provider.close();
         Mockito.verify(mockSts, times(1)).getCallerIdentity();
         Mockito.verify(mockEc2CredsProvider, times(1)).resolveIdentity();
+        Mockito.verify(mockEc2CredsProvider, times(1)).close();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
@@ -577,7 +607,7 @@ public class MSKCredentialProviderTest {
         Map<String, String> optionsMap = new HashMap<>();
         optionsMap.put("awsMaxRetries", "5");
 
-        AwsCredentialsProvider mockEc2CredsProvider = setupMockEc2DefaultProviderWithRetriableExceptions(numExceptions);
+        InstanceProfileCredentialsProvider mockEc2CredsProvider = setupMockEc2DefaultProviderWithRetriableExceptions(numExceptions);
 
         MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap) {
             protected AwsCredentialsProvider getDefaultProvider() {
@@ -592,6 +622,7 @@ public class MSKCredentialProviderTest {
 
         provider.close();
         Mockito.verify(mockEc2CredsProvider, times(numExceptions + 1)).resolveIdentity();
+        Mockito.verify(mockEc2CredsProvider, times(1)).close();
         Mockito.verifyNoMoreInteractions(mockEc2CredsProvider);
     }
 
@@ -878,7 +909,7 @@ public class MSKCredentialProviderTest {
         return mockEcsProvider;
     }
 
-    private AwsCredentialsProvider setupMockEc2DefaultProviderWithRetriableExceptions(int numErrors) {
+    private InstanceProfileCredentialsProvider setupMockEc2DefaultProviderWithRetriableExceptions(int numErrors) {
         SdkException[] exceptionsToThrow = getSdkBaseExceptions(numErrors);
         InstanceProfileCredentialsProvider mockEc2Provider = Mockito.mock(InstanceProfileCredentialsProvider.class);
 
