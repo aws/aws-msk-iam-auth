@@ -215,7 +215,9 @@ If the custom region provider returns null or throws an exception, a warning is 
 All three shipped providers read DNS and share the following parameters:
 - `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and resolve DNS on every call.
 - `dns.timeout.ms` — initial DNS query timeout in milliseconds. Defaults to `1000`.
-- `dns.retries` — how many times a DNS query is retried, each retry doubling the timeout. Defaults to `2`. Together with `dns.timeout.ms` this bounds how long an unresponsive resolver can stall authentication. Left unset, JNDI's own defaults retry for roughly 15 seconds per lookup, which a provider issuing one lookup per DNS indirection multiplies.
+- `dns.retries` — how many times a DNS query is retried, each retry doubling the timeout. Defaults to `4`.
+
+Together these bound how long an unresponsive resolver can stall authentication. **The defaults reproduce the JDK's own JNDI DNS defaults** (`DEFAULT_INIT_TIMEOUT = 1000`, `DEFAULT_RETRIES = 4`), so if you configure neither parameter, resolution behaves exactly as it did before these parameters existed. With the doubling retry schedule that allows `1s + 2s + 4s + 8s = 15s` per nameserver before a lookup is abandoned, and a provider that issues one lookup per DNS indirection multiplies that worst case. Lower them if you want authentication to fail fast on a black-holed resolver instead of waiting — for example `dns.timeout.ms=1000;dns.retries=2` gives a 3-second bound per lookup.
 
 They also share two behaviours worth knowing about:
 
@@ -690,7 +692,7 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
 - Add built-in `CnameRegionProvider` that resolves the region by following a hostname's CNAME chain, for DNS layouts where a stable endpoint name is a Route 53 failover CNAME over per-region names in a customer-owned domain
 - Add built-in `LookupDnsRegionProvider` that resolves the region from the resolved IP address of a bootstrap DNS name, for layouts where a stable bootstrap name repoints across regions and the active region is signalled by the network the name resolves into
 - All DNS-backed region providers now serve the last known good region when a refresh fails, instead of falling through to the `DefaultAwsRegionProviderChain`, which cannot see the DNS indirection and so is very likely to resolve the wrong region
-- All DNS-backed region providers now accept `dns.timeout.ms` and `dns.retries`, bounding how long an unresponsive resolver can stall authentication
+- All DNS-backed region providers now accept `dns.timeout.ms` and `dns.retries`, so an operator can bound how long an unresponsive resolver stalls authentication. The defaults reproduce the JDK's own JNDI DNS defaults, so resolution behaviour is unchanged for anyone who does not set them
 - Region ids read from TXT records are validated before use, so a typo fails with a message naming the record instead of producing a signing region that no endpoint exists for
 
 ### Release 2.3.9

@@ -39,8 +39,17 @@ final class RegionProviderConfig {
     static final String DNS_RETRIES_KEY = "dns.retries";
 
     static final long DEFAULT_REFRESH_SECONDS = 60;
+
+    // These mirror the JDK's own JNDI DNS defaults exactly -- see DEFAULT_INIT_TIMEOUT and
+    // DEFAULT_RETRIES in com.sun.jndi.dns.DnsContext. Setting them explicitly to the same values
+    // leaves resolution behaviour identical to not setting them at all, which matters because
+    // Route53RegionProvider shipped without them: a lower retry count here would silently shorten
+    // the DNS timeout for every existing deployment of that provider. The parameters exist so an
+    // operator can *tighten* the bound, not so this library can tighten it on their behalf.
+    // DnsClient retries with a doubling timeout (pktTimeout = timeout * (1 << retry)), so these
+    // defaults allow 1s + 2s + 4s + 8s = 15s per server before a lookup is abandoned.
     static final long DEFAULT_DNS_TIMEOUT_MS = 1000;
-    static final int DEFAULT_DNS_RETRIES = 2;
+    static final int DEFAULT_DNS_RETRIES = 4;
 
     private RegionProviderConfig() {
     }
@@ -78,9 +87,11 @@ final class RegionProviderConfig {
     /**
      * Builds the JNDI environment for a DNS lookup against the JDK's built-in DNS provider.
      *
-     * <p>An explicit timeout and retry count bound how long an unresponsive resolver can stall
-     * authentication. Left unset, JNDI's defaults retry with a doubling timeout for roughly 15
-     * seconds per lookup, which a provider issuing one lookup per indirection multiplies.</p>
+     * <p>The timeout and retry count bound how long an unresponsive resolver can stall
+     * authentication. The defaults reproduce the JDK's own values, so a caller that configures
+     * neither parameter sees the resolution behaviour it saw before these parameters existed. A
+     * provider issuing one lookup per DNS indirection multiplies the worst case, so an operator
+     * who cares about authentication latency should lower them deliberately.</p>
      */
     static Hashtable<String, String> dnsEnv(long timeoutMs, int retries) {
         Hashtable<String, String> env = new Hashtable<>();

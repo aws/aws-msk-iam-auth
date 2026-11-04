@@ -54,7 +54,9 @@ import software.amazon.awssdk.regions.Region;
  *       region. Each stale serve is logged at WARN.</p></li>
  *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
  *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
- *       timeout. Defaults to 2. Together with {@code dns.timeout.ms} this bounds how long an
+ *       timeout. Defaults to 4, which is the JDK default, so leaving both unset preserves the
+ *       resolution behaviour from before these parameters existed. Together with
+ *       {@code dns.timeout.ms} this bounds how long an
  *       unresponsive resolver can stall authentication.</li>
  * </ul>
  *

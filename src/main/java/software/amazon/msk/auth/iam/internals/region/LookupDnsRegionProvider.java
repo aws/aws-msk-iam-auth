@@ -82,7 +82,9 @@ import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
  *       {@link CachedRegionResolver}.</p></li>
  *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
  *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
- *       timeout. Defaults to 2. Together with {@code dns.timeout.ms} this bounds how long an
+ *       timeout. Defaults to 4, which is the JDK default, so leaving both unset preserves the
+ *       resolution behaviour from before these parameters existed. Together with
+ *       {@code dns.timeout.ms} this bounds how long an
  *       unresponsive resolver can stall authentication, which matters here because resolution
  *       costs two lookups: the bootstrap A record and the region TXT record.</li>
  * </ul>
