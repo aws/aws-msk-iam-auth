@@ -314,7 +314,118 @@ public class LookupDnsRegionProviderTest {
     @Test
     public void testRealDnsLookupOfUnresolvableHostThrows() {
         LookupDnsRegionProvider provider = new LookupDnsRegionProvider(
-                config("host", "nonexistent.invalid.host.example.invalid", "masking", "0.0.0.0/16"));
+                config("host", "nonexistent.invalid.host.example.invalid", "masking", "0.0.0.0/16",
+                        "dns.timeout.ms", "500", "dns.retries", "0"));
         assertThrows(SdkClientException.class, provider::getRegion);
+    }
+
+    @Test
+    public void testIgnoresIpv6AddressesWhenPickingBootstrapIp() {
+        // A dual-stack answer must not break the mask. Sorted as strings, 2001:db8::1 comes before
+        // 203.0.113.5, so before the IPv4 filter this picked the IPv6 literal and failed.
+        AtomicInteger txtLookups = new AtomicInteger();
+        Map<String, Set<String>> ips =
+                Collections.singletonMap(BOOTSTRAP, Set.of("2001:db8::1", "203.0.113.5"));
+        Map<String, String> txt = Collections.singletonMap("203-0-0-0." + BOOTSTRAP, "us-east-1");
+
+        Region region = provider(
+                config("host", BOOTSTRAP, "masking", "0.0.0.0/16", "refresh.seconds", "0"),
+                FIXED_CLOCK, ips, txt, txtLookups).getRegion();
+
+        assertEquals(Region.US_EAST_1, region);
+    }
+
+    @Test
+    public void testThrowsWhenBootstrapResolvesOnlyToIpv6() {
+        AtomicInteger txtLookups = new AtomicInteger();
+        Map<String, Set<String>> ips =
+                Collections.singletonMap(BOOTSTRAP, Set.of("2001:db8::1", "2600:1f18::2"));
+
+        LookupDnsRegionProvider provider = provider(
+                config("host", BOOTSTRAP, "masking", "0.0.0.0/16", "refresh.seconds", "0"),
+                FIXED_CLOCK, ips, Collections.emptyMap(), txtLookups);
+
+        SdkClientException ex = assertThrows(SdkClientException.class, provider::getRegion);
+        assertEquals(true, ex.getMessage().contains("non-IPv4"),
+                "The failure must name the real cause rather than a mask parse error");
+        assertEquals(0, txtLookups.get(), "No TXT lookup should be attempted");
+    }
+
+    @Test
+    public void testRejectsTxtValueThatIsNotARegion() {
+        AtomicInteger txtLookups = new AtomicInteger();
+        Map<String, Set<String>> ips = Collections.singletonMap(BOOTSTRAP, Set.of("10.218.4.7"));
+        Map<String, String> txt =
+                Collections.singletonMap("10-218-0-0." + BOOTSTRAP, "not-a-region");
+
+        LookupDnsRegionProvider provider = provider(
+                config("host", BOOTSTRAP, "masking", "0.0.0.0/16", "refresh.seconds", "0"),
+                FIXED_CLOCK, ips, txt, txtLookups);
+
+        SdkClientException ex = assertThrows(SdkClientException.class, provider::getRegion);
+        assertEquals(true, ex.getMessage().contains("is not a valid AWS region id"));
+    }
+
+    @Test
+    public void testAcceptsTxtValueForRegionNewerThanSdk() {
+        // A region launched after this SDK release is not in Region.regions() but is region-shaped,
+        // and must still be accepted.
+        AtomicInteger txtLookups = new AtomicInteger();
+        Map<String, Set<String>> ips = Collections.singletonMap(BOOTSTRAP, Set.of("10.218.4.7"));
+        Map<String, String> txt =
+                Collections.singletonMap("10-218-0-0." + BOOTSTRAP, "ap-southeast-9");
+
+        Region region = provider(
+                config("host", BOOTSTRAP, "masking", "0.0.0.0/16", "refresh.seconds", "0"),
+                FIXED_CLOCK, ips, txt, txtLookups).getRegion();
+
+        assertEquals("ap-southeast-9", region.id());
+    }
+
+    @Test
+    public void testServesStaleRegionWhenRefreshFailsAfterExpiry() {
+        AtomicReference<Instant> now = new AtomicReference<>(FIXED_CLOCK.instant());
+        Clock movable = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneId.of("UTC");
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return now.get();
+            }
+        };
+        Map<String, Set<String>> ips = new HashMap<>();
+        ips.put(BOOTSTRAP, Set.of("10.218.4.7"));
+        Map<String, String> txt = Collections.singletonMap("10-218-0-0." + BOOTSTRAP, "us-east-1");
+
+        LookupDnsRegionProvider provider = new LookupDnsRegionProvider(
+                config("host", BOOTSTRAP, "masking", "0.0.0.0/16", "refresh.seconds", "60"),
+                movable) {
+            @Override
+            Set<String> resolveHostAddresses(String lookupHost) {
+                return ips.getOrDefault(lookupHost, Set.of());
+            }
+
+            @Override
+            Optional<String> resolveTxtRecord(String lookupHost) {
+                return Optional.ofNullable(txt.get(lookupHost));
+            }
+        };
+
+        assertEquals(Region.US_EAST_1, provider.getRegion());
+
+        // Bootstrap DNS stops resolving and the cached entry expires.
+        ips.clear();
+        now.updateAndGet(i -> i.plusSeconds(120));
+
+        assertEquals(Region.US_EAST_1, provider.getRegion(),
+                "A failed refresh must serve the last known good region");
     }
 }

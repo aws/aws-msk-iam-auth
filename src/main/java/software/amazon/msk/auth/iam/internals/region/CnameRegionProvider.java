@@ -16,14 +16,12 @@
 package software.amazon.msk.auth.iam.internals.region;
 
 import java.time.Clock;
-import java.time.Instant;
-import java.util.Hashtable;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
@@ -84,8 +82,10 @@ import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
  * <p>Every name in the chain, starting with the host itself, is examined in three ways: the
  * AWS endpoint parse (so a chain terminating at a real AWS name such as
  * {@code ...elb.us-east-1.amazonaws.com} resolves precisely), then the configured {@code suffix}
- * anchor, then a label-exact scan of the whole name. The first name that yields a region ends the
- * walk, so no more DNS lookups are made than needed.</p>
+ * anchor, then a label-exact scan of the whole name. The first name that yields a region this SDK
+ * knows ends the walk, so no more DNS lookups are made than needed. A name that only yields a
+ * region-shaped label is held as a provisional answer while the walk continues, and used only if
+ * nothing better turns up; see {@code resolveRegionViaCnameChain}.</p>
  *
  * <p>When no name in the chain yields a region, an {@link SdkClientException} is thrown, which
  * {@link RegionUtils} treats as a failed provider and falls back to the
@@ -94,26 +94,17 @@ import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 public class CnameRegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(CnameRegionProvider.class);
 
-    private static final String HOST_KEY = "host";
     private static final String SUFFIX_KEY = "suffix";
     private static final String MAX_HOPS_KEY = "max.hops";
-    private static final String REFRESH_SECONDS_KEY = "refresh.seconds";
-    private static final String DNS_TIMEOUT_MS_KEY = "dns.timeout.ms";
-    private static final String DNS_RETRIES_KEY = "dns.retries";
 
     private static final int DEFAULT_MAX_HOPS = 3;
-    private static final long DEFAULT_REFRESH_SECONDS = 60;
-    private static final long DEFAULT_DNS_TIMEOUT_MS = 1000;
-    private static final int DEFAULT_DNS_RETRIES = 2;
 
     private final String host;
     private final String suffix;
     private final int maxHops;
-    private final long refreshSeconds;
     private final long dnsTimeoutMs;
     private final int dnsRetries;
-    private final Clock clock;
-    private final ConcurrentHashMap<String, CachedRegion> cache = new ConcurrentHashMap<>();
+    private final CachedRegionResolver cache;
 
     public CnameRegionProvider(Map<String, String> config) {
         this(config, Clock.systemUTC());
@@ -121,17 +112,20 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
 
     // Visible for testing
     CnameRegionProvider(Map<String, String> config, Clock clock) {
-        this.host = config != null ? config.get(HOST_KEY) : null;
+        this.host = config != null ? config.get(RegionProviderConfig.HOST_KEY) : null;
         this.suffix = normalizeSuffix(config != null ? config.get(SUFFIX_KEY) : null);
-        this.maxHops = (int) parseLongParam(config, MAX_HOPS_KEY, DEFAULT_MAX_HOPS, 1);
-        this.refreshSeconds = parseLongParam(config, REFRESH_SECONDS_KEY, DEFAULT_REFRESH_SECONDS, 0);
-        this.dnsTimeoutMs = parseLongParam(config, DNS_TIMEOUT_MS_KEY, DEFAULT_DNS_TIMEOUT_MS, 1);
-        this.dnsRetries = (int) parseLongParam(config, DNS_RETRIES_KEY, DEFAULT_DNS_RETRIES, 0);
-        this.clock = clock;
+        this.maxHops = RegionProviderConfig.parseBoundedInt(config, MAX_HOPS_KEY, DEFAULT_MAX_HOPS, 1);
+        this.dnsTimeoutMs = RegionProviderConfig.parseLong(config,
+                RegionProviderConfig.DNS_TIMEOUT_MS_KEY, RegionProviderConfig.DEFAULT_DNS_TIMEOUT_MS, 1);
+        this.dnsRetries = RegionProviderConfig.parseBoundedInt(config,
+                RegionProviderConfig.DNS_RETRIES_KEY, RegionProviderConfig.DEFAULT_DNS_RETRIES, 0);
+        long refreshSeconds = RegionProviderConfig.parseLong(config,
+                RegionProviderConfig.REFRESH_SECONDS_KEY, RegionProviderConfig.DEFAULT_REFRESH_SECONDS, 0);
+        this.cache = new CachedRegionResolver(refreshSeconds, clock);
         if (log.isDebugEnabled()) {
             log.debug("CnameRegionProvider initialized with host={}, suffix={}, max.hops={}, "
                             + "refresh.seconds={}, dns.timeout.ms={}, dns.retries={}",
-                    this.host, this.suffix, this.maxHops, this.refreshSeconds,
+                    this.host, this.suffix, this.maxHops, refreshSeconds,
                     this.dnsTimeoutMs, this.dnsRetries);
         }
     }
@@ -149,29 +143,19 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
                     "Cannot resolve region: no host configured and no host parameter provided");
         }
         String startHost = RegionUtils.normalizeHost(configuredOrSupplied);
-
-        if (refreshSeconds > 0) {
-            CachedRegion cached = cache.get(startHost);
-            if (cached != null && !cached.isExpired(clock.instant(), refreshSeconds)) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Returning cached region {} for host: {}", cached.region.id(), startHost);
-                }
-                return cached.region;
-            }
-        }
-
-        Region region = resolveRegionViaCnameChain(startHost);
-
-        if (refreshSeconds > 0) {
-            cache.put(startHost, new CachedRegion(region, clock.instant()));
-        }
-
-        return region;
+        return cache.resolve(startHost, () -> resolveRegionViaCnameChain(startHost));
     }
 
     /**
-     * Walks the CNAME chain from {@code startHost}, examining each name for a region and stopping
-     * at the first one that yields it.
+     * Walks the CNAME chain from {@code startHost}, examining each name for a region.
+     *
+     * <p>A <em>verified</em> region ends the walk immediately. A name that only yields a
+     * region-shaped label is kept as a provisional answer and the walk continues, because a later
+     * name in the chain may yield a verified one — a chain through
+     * {@code kafka.us-prod-1.customer.com} to {@code nlb-abc.elb.us-east-1.amazonaws.com} must
+     * resolve {@code us-east-1}, not the environment label that merely looks like a region. The
+     * provisional answer is used only when the whole chain produces nothing better, which is what
+     * keeps a region launched after this SDK release resolving.</p>
      *
      * <p>The walk also stops when a name has no CNAME record — the end of the chain — and when a
      * name repeats, which would otherwise spin on a misconfigured DNS loop.</p>
@@ -185,9 +169,15 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
         Set<String> visited = new LinkedHashSet<>();
         visited.add(startHost);
         String current = startHost;
-        Optional<Region> region = extractRegion(current);
+        Optional<Region> verified = extractVerifiedRegion(current);
+        Optional<Region> provisional = Optional.empty();
+        String provisionalHost = null;
+        if (verified.isEmpty()) {
+            provisional = extractProvisionalRegion(current);
+            provisionalHost = provisional.isPresent() ? current : null;
+        }
 
-        for (int hop = 0; hop < maxHops && region.isEmpty(); hop++) {
+        for (int hop = 0; hop < maxHops && verified.isEmpty(); hop++) {
             if (log.isDebugEnabled()) {
                 log.debug("Resolving CNAME for host: {} (hop {} of {})", current, hop + 1, maxHops);
             }
@@ -204,27 +194,62 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
                 break;
             }
             current = next;
-            region = extractRegion(current);
+            verified = extractVerifiedRegion(current);
+            if (verified.isEmpty() && provisional.isEmpty()) {
+                provisional = extractProvisionalRegion(current);
+                if (provisional.isPresent()) {
+                    provisionalHost = current;
+                }
+            }
         }
 
-        return region.orElseThrow(() -> SdkClientException.create(
+        if (verified.isPresent()) {
+            return verified.get();
+        }
+        if (provisional.isPresent()) {
+            Region region = provisional.get();
+            log.warn("Signing region '{}' was taken from host {} because its label matches an AWS "
+                            + "region naming pattern, but it is not a region this SDK release knows and "
+                            + "no other name in the chain {} yielded a known region. If '{}' is not a "
+                            + "real region (for example an environment label that happens to look like "
+                            + "one), authentication will fail; otherwise upgrade the SDK to recognise it.",
+                    region.id(), provisionalHost, String.join(" -> ", visited), region.id());
+            return region;
+        }
+        throw SdkClientException.create(
                 "Could not determine a region from the CNAME chain " + String.join(" -> ", visited)
-                        + " (max.hops=" + maxHops + ")"));
+                        + " (max.hops=" + maxHops + ")");
     }
 
     /**
-     * Reads a region out of a single hostname, from the most precise interpretation to the least:
-     * the AWS endpoint parse, then the configured {@code suffix} anchor, then a label-exact scan.
+     * Reads a region out of a single hostname, accepting only answers that are trustworthy on their
+     * own: the AWS endpoint parse, where the label sits in the region position of a name inside an
+     * AWS-owned DNS suffix, and a label that is a region this SDK knows.
      *
      * <p>The label scan still runs when a {@code suffix} is configured but does not match, because
      * a name part-way along the chain can legitimately sit outside the caller's own domain.</p>
      */
-    private Optional<Region> extractRegion(String bareHost) {
+    private Optional<Region> extractVerifiedRegion(String bareHost) {
         Optional<Region> endpointRegion = RegionUtils.extractRegionFromEndpointHost(bareHost);
         if (endpointRegion.isPresent()) {
             return endpointRegion;
         }
-        Optional<Region> suffixRegion = extractRegionFromConfiguredSuffix(bareHost);
+        Optional<Region> suffixRegion =
+                regionFromConfiguredSuffix(bareHost, RegionUtils::knownRegionFromLabel);
+        if (suffixRegion.isPresent()) {
+            return suffixRegion;
+        }
+        return RegionUtils.extractKnownRegionFromHostLabels(bareHost);
+    }
+
+    /**
+     * Reads a region-shaped but unverified label out of a customer-owned hostname. Only called
+     * after {@link #extractVerifiedRegion(String)} has come back empty, so any answer here matches
+     * a partition naming pattern without being a region this SDK knows.
+     */
+    private Optional<Region> extractProvisionalRegion(String bareHost) {
+        Optional<Region> suffixRegion =
+                regionFromConfiguredSuffix(bareHost, RegionUtils::regionFromLabel);
         if (suffixRegion.isPresent()) {
             return suffixRegion;
         }
@@ -235,12 +260,13 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
      * Anchored parse against the caller's own domain: when the host ends with the configured
      * suffix, the region is the label directly before it.
      */
-    private Optional<Region> extractRegionFromConfiguredSuffix(String bareHost) {
+    private Optional<Region> regionFromConfiguredSuffix(String bareHost,
+                                                        Function<String, Optional<Region>> labelParser) {
         if (suffix == null || !bareHost.endsWith("." + suffix)) {
             return Optional.empty();
         }
         String head = bareHost.substring(0, bareHost.length() - suffix.length() - 1);
-        return RegionUtils.regionFromLabel(head.substring(head.lastIndexOf('.') + 1));
+        return labelParser.apply(head.substring(head.lastIndexOf('.') + 1));
     }
 
     /**
@@ -256,11 +282,8 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
      */
     String resolveCname(String lookupHost) {
         try {
-            Hashtable<String, String> env = new Hashtable<>();
-            env.put(DirContext.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.dns.DnsContextFactory");
-            env.put("com.sun.jndi.dns.timeout.initial", Long.toString(dnsTimeoutMs));
-            env.put("com.sun.jndi.dns.timeout.retries", Integer.toString(dnsRetries));
-            DirContext ctx = new InitialDirContext(env);
+            DirContext ctx = new InitialDirContext(
+                    RegionProviderConfig.dnsEnv(dnsTimeoutMs, dnsRetries));
             try {
                 Attributes attrs = ctx.getAttributes(lookupHost, new String[]{"CNAME"});
                 Attribute cnameAttr = attrs.get("CNAME");
@@ -293,36 +316,5 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
         return normalized.isEmpty() ? null : normalized;
-    }
-
-    private static long parseLongParam(Map<String, String> config, String key, long defaultValue,
-                                      long minimum) {
-        if (config == null) {
-            return defaultValue;
-        }
-        String value = config.get(key);
-        if (value == null || value.isBlank()) {
-            return defaultValue;
-        }
-        try {
-            return Math.max(minimum, Long.parseLong(value.trim()));
-        } catch (NumberFormatException e) {
-            log.warn("Invalid value for {}: '{}'. Using default {}.", key, value, defaultValue);
-            return defaultValue;
-        }
-    }
-
-    private static class CachedRegion {
-        final Region region;
-        final Instant resolvedAt;
-
-        CachedRegion(Region region, Instant resolvedAt) {
-            this.region = region;
-            this.resolvedAt = resolvedAt;
-        }
-
-        boolean isExpired(Instant now, long refreshSeconds) {
-            return resolvedAt.plusSeconds(refreshSeconds).isBefore(now);
-        }
     }
 }

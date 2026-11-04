@@ -212,11 +212,20 @@ The library ships with three providers, described below. Note also that a custom
 
 If the custom region provider returns null or throws an exception, a warning is logged and the library falls back to the `DefaultAwsRegionProviderChain`.
 
+All three shipped providers read DNS and share the following parameters:
+- `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and resolve DNS on every call.
+- `dns.timeout.ms` — initial DNS query timeout in milliseconds. Defaults to `1000`.
+- `dns.retries` — how many times a DNS query is retried, each retry doubling the timeout. Defaults to `2`. Together with `dns.timeout.ms` this bounds how long an unresponsive resolver can stall authentication. Left unset, JNDI's own defaults retry for roughly 15 seconds per lookup, which a provider issuing one lookup per DNS indirection multiplies.
+
+They also share two behaviours worth knowing about:
+
+- **A failed refresh serves the last known good region.** When a cache entry expires and re-resolution fails, the previously resolved region is used and a warning is logged, rather than letting the failure propagate. Propagating would send the library to the `DefaultAwsRegionProviderChain`, which resolves from environment variables, the profile file or IMDS — none of which know about the DNS indirection these providers exist to follow, so its answer is very likely the wrong region. A transient DNS failure is far more common than a failover, so the last known good region is the better guess, and the entry refreshes as soon as DNS recovers. There is no fallback on the very first resolution, since there is nothing cached yet.
+- **Region ids are validated before use.** `Region.of` accepts any string at all, so an unvalidated value becomes a signing region that no endpoint exists for and authentication fails with nothing pointing at the cause. A value is accepted if it is a region this SDK release knows, or if it matches a partition's region naming pattern so that regions launched after this release still resolve; anything else fails with a message naming where the value came from.
+
 #### Route53RegionProvider
 
-`Route53RegionProvider` resolves the region by performing a DNS TXT record lookup. It accepts the following optional parameters:
+`Route53RegionProvider` resolves the region by performing a DNS TXT record lookup. In addition to the shared parameters above, it accepts:
 - `host` — when provided, it is used directly as the DNS lookup name. When omitted, the broker hostname is prefixed with `region.` to form the lookup name (e.g. `region.broker.example.com`).
-- `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and resolve DNS on every call.
 
 The TXT record value is expected to contain a valid AWS region id (e.g. `us-east-1`).
 
@@ -234,15 +243,14 @@ sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
   awsMskRegionProvider="software.amazon.msk.auth.iam.internals.region.CnameRegionProvider?suffix=customer.com;max.hops=3";
 ```
 
-All parameters are optional:
+All parameters are optional. In addition to the shared parameters above:
 - `suffix` — a domain suffix you own, e.g. `customer.com`. When a resolved name ends with this suffix, the region is the label immediately before it. This pins the region to one position in the name, so a region-shaped label elsewhere cannot be mistaken for it. A leading dot is optional. Recommended whenever the position of the region label is known.
 - `max.hops` — how many CNAME lookups to follow before giving up. Defaults to `3`, with a floor of `1`. Each hop is a sequential DNS round trip on the authentication path, so raise this only as far as your chain requires.
 - `host` — when provided, the chain is walked from this name instead of the broker hostname. Set it to use this provider on the OAuth path, where no broker hostname is available.
-- `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and walk the chain on every call.
-- `dns.timeout.ms` — initial DNS query timeout in milliseconds. Defaults to `1000`.
-- `dns.retries` — how many times a DNS query is retried, each retry doubling the timeout. Defaults to `2`. Together with `dns.timeout.ms` this bounds how long an unresponsive resolver can stall authentication, which matters here because a chain costs one lookup per hop.
 
-Every name in the chain, starting with the hostname itself, is examined in three ways: the AWS endpoint parse (so a chain terminating at a real AWS name such as `...elb.us-east-1.amazonaws.com` resolves precisely), then the configured `suffix` anchor, then a label-exact scan of the whole name. The first name that yields a region ends the walk, so no more DNS lookups are made than needed. A repeated name ends the walk, so a misconfigured DNS loop cannot spin.
+Every name in the chain, starting with the hostname itself, is examined in three ways: the AWS endpoint parse (so a chain terminating at a real AWS name such as `...elb.us-east-1.amazonaws.com` resolves precisely), then the configured `suffix` anchor, then a label-exact scan of the whole name. A repeated name ends the walk, so a misconfigured DNS loop cannot spin.
+
+A name that yields a region this SDK knows — or any name inside an AWS-owned DNS suffix, where the label sits in the endpoint's region position — ends the walk immediately, so no more DNS lookups are made than needed. A name in your own domain that only yields a *region-shaped* label is treated as provisional and the walk continues, because the partition naming patterns are permissive: the `aws` pattern `^(us|eu|ap|sa|ca|me|af|il|mx)-\w+-\d+$` also matches environment labels such as `us-prod-1` or `eu-blue-2`. So a chain through `kafka.us-prod-1.customer.com` to `nlb-abc.elb.us-east-1.amazonaws.com` signs for `us-east-1`, not for the environment label. The provisional answer is used only when the whole chain produces nothing better, which is what keeps a region launched after this SDK release resolving; when that happens a warning is logged naming the label, since authentication will fail if it is not a real region.
 
 #### LookupDnsRegionProvider
 
@@ -260,12 +268,15 @@ sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
   awsMskRegionProvider="software.amazon.msk.auth.iam.internals.region.LookupDnsRegionProvider?host=msk.example.com;masking=0.0.0.0/16;refresh.seconds=30";
 ```
 
-Parameters:
+Parameters, in addition to the shared parameters above:
 - `masking` — **required.** A CIDR-style mask whose prefix length is applied to the resolved IP, e.g. `0.0.0.0/16`. Only the `/NN` portion matters; the address portion is ignored and exists only to make the value read like a familiar CIDR block. Must be octet-aligned (`/8`, `/16`, `/24`, `/32`) so the network prefix maps cleanly onto a dash-encoded DNS label. Omitting this parameter fails construction.
 - `host` — optional bootstrap hostname to resolve. When provided, it is used instead of the broker hostname. Set it to use this provider on the OAuth path, where no broker hostname is available.
-- `refresh.seconds` — cache TTL in seconds for the resolved region. Defaults to `60` (1 minute). Set to `0` to disable caching and resolve DNS on every call.
+
+Both lookups go through DNS directly rather than through `InetAddress`, which matters twice over. `InetAddress` answers from the JVM-wide address cache, whose [default positive TTL is 30 seconds](https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/jvm-ttl-dns.html) and is unbounded when a security manager is installed, so a repointed bootstrap name would keep resolving to the old network well past this provider's own `refresh.seconds` — including when caching is disabled entirely. It also returns AAAA records, and an IPv6 address cannot be masked into an IPv4 network prefix. Only A records are requested, and any non-IPv4 address is discarded before the mask is applied.
 
 When the bootstrap name has several A records, the lowest-sorted address is chosen so records sharing a network prefix still yield one stable lookup name. On a cluster swap the resolved IP changes, producing a different TXT lookup name and region; the cache TTL bounds how long a request may be signed for the previous region before the client re-resolves and picks up the new one.
+
+One operational caveat: if the bootstrap name ever has A records in more than one network at the same time — mid-failover, or an active-active layout — one address is chosen arbitrarily and the whole client signs for that network's region, so connections landing in the other region fail. This provider assumes the bootstrap name resolves into one network at a time.
 
 You can also implement your own provider by implementing the `ConfigurableRegionProvider` interface:
 
@@ -675,11 +686,21 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
    
 ## Release Notes
 
-### Release 2.3.9
+### Release 2.3.10
+- Add built-in `CnameRegionProvider` that resolves the region by following a hostname's CNAME chain, for DNS layouts where a stable endpoint name is a Route 53 failover CNAME over per-region names in a customer-owned domain
 - Add built-in `LookupDnsRegionProvider` that resolves the region from the resolved IP address of a bootstrap DNS name, for layouts where a stable bootstrap name repoints across regions and the active region is signalled by the network the name resolves into
+- All DNS-backed region providers now serve the last known good region when a refresh fails, instead of falling through to the `DefaultAwsRegionProviderChain`, which cannot see the DNS indirection and so is very likely to resolve the wrong region
+- All DNS-backed region providers now accept `dns.timeout.ms` and `dns.retries`, bounding how long an unresponsive resolver can stall authentication
+- Region ids read from TXT records are validated before use, so a typo fails with a message naming the record instead of producing a signing region that no endpoint exists for
+
+### Release 2.3.9
+- Fix credential resolution failures when dualstack endpoints are enabled via `AWS_USE_DUALSTACK_ENDPOINT`, the `aws.useDualstackEndpoint` system property, or `use_dualstack_endpoint` in the AWS config profile (#252, fixes #248)
+- Remove the explicit STS endpoint override, delegating endpoint resolution to the AWS SDK's endpoint ruleset, which resolves regional, dualstack and FIPS endpoints correctly. Endpoints resolved for existing non-dualstack regional configurations are unchanged
+- Fail fast with an actionable error naming the `awsStsRegion` JAAS option when dualstack is enabled and no `awsStsRegion` is configured, instead of repeatedly retrying the nonexistent `sts.aws-global.api.aws` hostname
+- Log a WARN naming the failed provider when the last configured credential provider falls back to the default providers, so a connection no longer silently authenticates as an unintended ambient identity. `awsAddDefaultProviders="false"` remains the way to fail fast instead of falling back
+- Set `fipsEnabled` on the STS client only when the `awsShouldUseFips` JAAS option requests it, so ambient FIPS configuration is honored
 
 ### Release 2.3.8
-- Add built-in `CnameRegionProvider` that resolves the region by following a hostname's CNAME chain, for DNS layouts where a stable endpoint name is a Route 53 failover CNAME over per-region names in a customer-owned domain
 - Fix signing-region resolution for cluster names containing an AWS region id: the region is now anchored to the endpoint DNS suffix instead of matched as an unanchored substring (#245)
 - Upgrade the AWS SDK BOM from 2.44.12 to 2.51.2
 - Update `jackson-databind` to 2.22.1, resolving CVE-2026-54512, CVE-2026-54513, CVE-2026-54514 and CVE-2026-54515

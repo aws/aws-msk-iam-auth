@@ -295,6 +295,43 @@ public class RegionUtilsTest {
     }
 
     @Test
+    public void testRegionFromLabelAcceptsRegionShapedNonRegion() {
+        // The aws partition pattern is permissive enough to match labels that are not regions.
+        // Accepting them is what keeps a region launched after this SDK release resolving, so this
+        // pins the tolerance deliberately; knownRegionFromLabel is the strict counterpart.
+        assertEquals("us-prod-1", RegionUtils.regionFromLabel("us-prod-1").get().id());
+        assertEquals("eu-blue-2", RegionUtils.regionFromLabel("eu-blue-2").get().id());
+    }
+
+    @Test
+    public void testKnownRegionFromLabelRejectsRegionShapedNonRegion() {
+        assertTrue(RegionUtils.knownRegionFromLabel("us-prod-1").isEmpty());
+        assertTrue(RegionUtils.knownRegionFromLabel("eu-blue-2").isEmpty());
+        assertTrue(RegionUtils.knownRegionFromLabel("ap-southeast-9").isEmpty());
+    }
+
+    @Test
+    public void testKnownRegionFromLabelAcceptsKnownRegion() {
+        assertEquals(Region.US_EAST_1, RegionUtils.knownRegionFromLabel("us-east-1").get());
+        assertEquals(Region.US_EAST_1, RegionUtils.knownRegionFromLabel(" US-EAST-1 ").get());
+    }
+
+    @Test
+    public void testKnownRegionFromLabelRejectsNullAndNonRegion() {
+        assertTrue(RegionUtils.knownRegionFromLabel(null).isEmpty());
+        assertTrue(RegionUtils.knownRegionFromLabel("").isEmpty());
+        assertTrue(RegionUtils.knownRegionFromLabel("customer").isEmpty());
+    }
+
+    @Test
+    public void testExtractKnownRegionFromHostLabelsSkipsRegionShapedNonRegion() {
+        // The strict scan must pass over us-prod-1 and keep looking for a real region.
+        assertEquals(Region.EU_WEST_1,
+                RegionUtils.extractKnownRegionFromHostLabels("us-prod-1.msk.eu-west-1.customer.com").get());
+        assertTrue(RegionUtils.extractKnownRegionFromHostLabels("kafka.us-prod-1.customer.com").isEmpty());
+    }
+
+    @Test
     public void testRegionFromLabelRejectsOverlongLabel() {
         // A DNS label is at most 63 characters (RFC 1035).
         assertTrue(RegionUtils.regionFromLabel(

@@ -96,6 +96,77 @@ public class Route53RegionProviderTest {
     }
 
     @Test
+    public void testRejectsTxtValueThatIsNotARegion() {
+        Map<String, String> config = new HashMap<>();
+        config.put("host", "region.my-cluster.example.com");
+        Route53RegionProvider provider = new Route53RegionProvider(config) {
+            @Override
+            String resolveTxtRecord(String lookupHost) {
+                return "not-a-region";
+            }
+        };
+        SdkClientException ex = assertThrows(SdkClientException.class, () -> provider.getRegion("any"));
+        assertEquals(true, ex.getMessage().contains("is not a valid AWS region id"));
+    }
+
+    @Test
+    public void testAcceptsTxtValueForRegionNewerThanSdk() {
+        Map<String, String> config = new HashMap<>();
+        config.put("host", "region.my-cluster.example.com");
+        Route53RegionProvider provider = new Route53RegionProvider(config) {
+            @Override
+            String resolveTxtRecord(String lookupHost) {
+                return "ap-southeast-9";
+            }
+        };
+        assertEquals("ap-southeast-9", provider.getRegion("any").id());
+    }
+
+    @Test
+    public void testServesStaleRegionWhenRefreshFailsAfterExpiry() {
+        AtomicReference<Instant> now = new AtomicReference<>(Instant.parse("2025-01-01T00:00:00Z"));
+        Clock movable = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneId.of("UTC");
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return now.get();
+            }
+        };
+        Map<String, String> config = new HashMap<>();
+        config.put("host", "region.my-cluster.example.com");
+        config.put("refresh.seconds", "60");
+        AtomicReference<String> txtValue = new AtomicReference<>("us-east-1");
+
+        Route53RegionProvider provider = new Route53RegionProvider(config, movable) {
+            @Override
+            String resolveTxtRecord(String lookupHost) {
+                String value = txtValue.get();
+                if (value == null) {
+                    throw SdkClientException.create("DNS is down");
+                }
+                return value;
+            }
+        };
+
+        assertEquals(Region.US_EAST_1, provider.getRegion("any"));
+
+        txtValue.set(null);
+        now.updateAndGet(i -> i.plusSeconds(120));
+
+        assertEquals(Region.US_EAST_1, provider.getRegion("any"),
+                "A failed refresh must serve the last known good region");
+    }
+
+    @Test
     public void testRefreshSecondsInvalidValueUsesDefault() {
         Map<String, String> config = new HashMap<>();
         config.put("refresh.seconds", "not-a-number");

@@ -171,11 +171,34 @@ public class RegionUtils {
    * @return the first label that resolves to a region, or empty if no label does.
    */
   public static Optional<Region> extractRegionFromHostLabels(String host) {
+    return scanLabels(host, RegionUtils::regionFromLabel);
+  }
+
+  /**
+   * Label-exact scan restricted to regions this SDK knows, ignoring the partition naming patterns.
+   *
+   * <p>Lets a caller tell a verified region from a merely region-shaped label. The naming patterns
+   * are permissive enough to match plausible non-region labels — the {@code aws} partition pattern
+   * accepts {@code us-prod-1} and {@code eu-blue-2} — which is acceptable when the label sits in
+   * the region position of an AWS-owned endpoint name but is a guess when it comes from a
+   * customer-owned hostname. A caller walking several hostnames can use this to prefer a hostname
+   * that yields a known region over one that only yields a pattern match, and fall back to
+   * {@link #extractRegionFromHostLabels(String)} when nothing better turns up.
+   *
+   * @param host the hostname to scan. May carry a port, a trailing root dot or mixed case.
+   * @return the first label that is a region id in this SDK's region list, or empty if none is.
+   */
+  public static Optional<Region> extractKnownRegionFromHostLabels(String host) {
+    return scanLabels(host, RegionUtils::knownRegionFromLabel);
+  }
+
+  private static Optional<Region> scanLabels(String host,
+      java.util.function.Function<String, Optional<Region>> labelParser) {
     if (host == null) {
       return Optional.empty();
     }
     for (String label : normalizeHost(host).split("\\.")) {
-      Optional<Region> region = regionFromLabel(label);
+      Optional<Region> region = labelParser.apply(label);
       if (region.isPresent()) {
         return region;
       }
@@ -184,7 +207,7 @@ public class RegionUtils {
   }
 
   /**
-   * Interpret a single DNS label as an AWS region id.
+   * Interpret a single DNS label, or an operator-supplied region id, as an AWS region.
    *
    * <p>A label in this SDK's region list is returned directly. A label that is not in the list is
    * accepted when it matches the region naming pattern of any partition this SDK knows, so that
@@ -192,16 +215,19 @@ public class RegionUtils {
    * input to one label in a region-bearing position, {@link Region#of} is safe here; calling it on
    * an arbitrary string would mint a Region for anything.
    *
+   * <p>The naming patterns are permissive: the {@code aws} partition pattern
+   * {@code ^(us|eu|ap|sa|ca|me|af|il|mx)\-\w+\-\d+$} also matches labels that are not regions at
+   * all, such as {@code us-prod-1}. Accepting them is deliberate, because rejecting unknown labels
+   * would stop a region launched after this release from resolving, but it means a match here is
+   * not proof the region exists. Use {@link #knownRegionFromLabel(String)} when the caller can act
+   * on that distinction.
+   *
    * @param label a single DNS label, without dots.
    * @return the region the label denotes, or empty if it is not region-shaped.
    */
   public static Optional<Region> regionFromLabel(String label) {
-    if (label == null) {
-      return Optional.empty();
-    }
-    String candidate = label.trim().toLowerCase(Locale.ROOT);
-    // A DNS label is at most 63 characters (RFC 1035), so anything longer cannot be a region.
-    if (candidate.isEmpty() || candidate.length() > 63) {
+    String candidate = normalizeLabel(label);
+    if (candidate == null) {
       return Optional.empty();
     }
     Optional<Region> known = knownRegion(candidate);
@@ -214,6 +240,33 @@ public class RegionUtils {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * Interpret a single DNS label as a region id this SDK knows, without the partition pattern
+   * tolerance of {@link #regionFromLabel(String)}.
+   *
+   * @param label a single DNS label, without dots.
+   * @return the region, or empty if the label is not in this SDK's region list.
+   */
+  public static Optional<Region> knownRegionFromLabel(String label) {
+    String candidate = normalizeLabel(label);
+    return candidate == null ? Optional.empty() : knownRegion(candidate);
+  }
+
+  /**
+   * Normalize a candidate label for comparison, returning null when it cannot be a region id.
+   */
+  private static String normalizeLabel(String label) {
+    if (label == null) {
+      return null;
+    }
+    String candidate = label.trim().toLowerCase(Locale.ROOT);
+    // A DNS label is at most 63 characters (RFC 1035), so anything longer cannot be a region.
+    if (candidate.isEmpty() || candidate.length() > 63) {
+      return null;
+    }
+    return candidate;
   }
 
   /**

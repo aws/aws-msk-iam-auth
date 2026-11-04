@@ -16,17 +16,15 @@
 package software.amazon.msk.auth.iam.internals.region;
 
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.time.Clock;
-import java.time.Instant;
-import java.util.Arrays;
-import java.util.Hashtable;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
+import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
@@ -78,8 +76,21 @@ import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
  *       on every call. Lazily evaluated: the cache is only refreshed when an authentication request
  *       needs to be signed. Note the failover implication — for up to this long after the bootstrap
  *       name repoints, requests are signed for the previous region and fail, until the entry
- *       expires and the client's next authentication attempt picks up the new region.</li>
+ *       expires and the client's next authentication attempt picks up the new region.
+ *       <p>When a refresh fails and a region was previously resolved for the same bootstrap host,
+ *       the last known good region is served rather than failing; see
+ *       {@link CachedRegionResolver}.</p></li>
+ *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
+ *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
+ *       timeout. Defaults to 2. Together with {@code dns.timeout.ms} this bounds how long an
+ *       unresponsive resolver can stall authentication, which matters here because resolution
+ *       costs two lookups: the bootstrap A record and the region TXT record.</li>
  * </ul>
+ *
+ * <p>Both lookups go through JNDI DNS rather than {@link InetAddress}, so they are unaffected by
+ * the JVM-wide address cache and see only IPv4 A records. The TXT value is validated as a region id
+ * before use, so a typo fails with a message naming the record instead of producing a signing
+ * region that no endpoint exists for.</p>
  *
  * <p>When the bootstrap IP or the region TXT record cannot be resolved, an
  * {@link SdkClientException} is thrown, which {@link RegionUtils} treats as a failed provider and
@@ -88,16 +99,13 @@ import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(LookupDnsRegionProvider.class);
 
-    private static final String HOST_KEY = "host";
     private static final String MASKING_KEY = "masking";
-    private static final String REFRESH_SECONDS_KEY = "refresh.seconds";
-    private static final long DEFAULT_REFRESH_SECONDS = 60;
 
     private final String host;
     private final NetworkPrefix networkPrefix;
-    private final long refreshSeconds;
-    private final Clock clock;
-    private final ConcurrentHashMap<String, CachedRegion> cache = new ConcurrentHashMap<>();
+    private final long dnsTimeoutMs;
+    private final int dnsRetries;
+    private final CachedRegionResolver cache;
 
     public LookupDnsRegionProvider(Map<String, String> config) {
         this(config, Clock.systemUTC());
@@ -110,13 +118,20 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
             throw new IllegalArgumentException(
                     "LookupDnsRegionProvider requires a '" + MASKING_KEY + "' parameter (e.g. 0.0.0.0/16)");
         }
-        this.host = config.get(HOST_KEY);
+        this.host = config.get(RegionProviderConfig.HOST_KEY);
         this.networkPrefix = NetworkPrefix.parse(maskingParam);
-        this.refreshSeconds = parseRefreshSeconds(config);
-        this.clock = clock;
+        this.dnsTimeoutMs = RegionProviderConfig.parseLong(config,
+                RegionProviderConfig.DNS_TIMEOUT_MS_KEY, RegionProviderConfig.DEFAULT_DNS_TIMEOUT_MS, 1);
+        this.dnsRetries = RegionProviderConfig.parseBoundedInt(config,
+                RegionProviderConfig.DNS_RETRIES_KEY, RegionProviderConfig.DEFAULT_DNS_RETRIES, 0);
+        long refreshSeconds = RegionProviderConfig.parseLong(config,
+                RegionProviderConfig.REFRESH_SECONDS_KEY, RegionProviderConfig.DEFAULT_REFRESH_SECONDS, 0);
+        this.cache = new CachedRegionResolver(refreshSeconds, clock);
         if (log.isDebugEnabled()) {
-            log.debug("LookupDnsRegionProvider initialized with host={}, masking=/{}, refresh.seconds={}",
-                    this.host, this.networkPrefix.prefixLength(), this.refreshSeconds);
+            log.debug("LookupDnsRegionProvider initialized with host={}, masking=/{}, "
+                            + "refresh.seconds={}, dns.timeout.ms={}, dns.retries={}",
+                    this.host, this.networkPrefix.prefixLength(), refreshSeconds,
+                    this.dnsTimeoutMs, this.dnsRetries);
         }
     }
 
@@ -137,22 +152,7 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
         // The cache is keyed by the bootstrap host. On a cluster swap the resolved IP changes,
         // producing a different TXT lookup name and region; the TTL bounds how stale the cached
         // region may be before we re-resolve and pick up the new cluster's region.
-        if (refreshSeconds > 0) {
-            CachedRegion cached = cache.get(bootstrapHost);
-            if (cached != null && !cached.isExpired(clock.instant(), refreshSeconds)) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Returning cached region {} for host: {}", cached.region.id(), bootstrapHost);
-                }
-                return cached.region;
-            }
-        }
-
-        Region region = resolve(bootstrapHost);
-
-        if (refreshSeconds > 0) {
-            cache.put(bootstrapHost, new CachedRegion(region, clock.instant()));
-        }
-        return region;
+        return cache.resolve(bootstrapHost, () -> resolve(bootstrapHost));
     }
 
     private Region resolve(String bootstrapHost) {
@@ -160,9 +160,21 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
         if (ips == null || ips.isEmpty()) {
             throw SdkClientException.create("Could not resolve any IP for host: " + bootstrapHost);
         }
+        // Only IPv4 can be masked into a dotted-quad network prefix. Discard anything else before
+        // sorting: an IPv6 literal left in the set could sort first (2001:db8::1 sorts before
+        // 203.0.113.5) and fail the mask, and because that depends on the particular addresses
+        // returned, a dual-stack bootstrap name would fail only intermittently.
+        Set<String> ipv4 = ips.stream()
+                .filter(ip -> ip != null && !ip.isBlank() && !ip.contains(":"))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ipv4.isEmpty()) {
+            throw SdkClientException.create("Host " + bootstrapHost + " resolved only to non-IPv4 "
+                    + "addresses " + ips + "; this provider masks IPv4 addresses into a network "
+                    + "prefix and cannot derive a region from an IPv6 address");
+        }
         // Deterministically pick the lowest-sorted IP so multiple A records in the same network
         // prefix yield a stable lookup name.
-        String ip = ips.stream().sorted().findFirst().orElseThrow();
+        String ip = ipv4.stream().sorted().findFirst().orElseThrow();
 
         String label = networkPrefix.toDashedLabel(ip);
         String lookupHost = label + "." + bootstrapHost;
@@ -177,7 +189,8 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
             throw SdkClientException.create(
                     "No region TXT record found at: " + lookupHost + " (for bootstrap IP " + ip + ")");
         }
-        Region region = Region.of(regionId.get());
+        Region region = RegionProviderConfig.validateRegionId(
+                regionId.get(), "the TXT record at " + lookupHost);
         if (log.isDebugEnabled()) {
             log.debug("Resolved region '{}' for bootstrap host {} (ip={}, txt={})",
                     region.id(), bootstrapHost, ip, lookupHost);
@@ -186,20 +199,55 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
     }
 
     /**
-     * Resolves the A/AAAA records of the given hostname to a set of address literals, using
-     * {@link InetAddress#getAllByName(String)}.
+     * Resolves the A records of the given hostname to a set of IPv4 address literals, using JNDI
+     * with the {@code com.sun.jndi.dns.DnsContextFactory} built-in JDK DNS provider — the same
+     * mechanism as {@link #resolveTxtRecord(String)}.
+     *
+     * <p>Querying DNS directly rather than through {@link InetAddress#getAllByName(String)} matters
+     * twice over. {@code InetAddress} answers from the JVM-wide address cache, whose default
+     * positive TTL is 30 seconds and is unbounded when a security manager is installed, so a
+     * repointed bootstrap name would keep resolving to the old network well past this provider's
+     * own {@code refresh.seconds} — including when caching is disabled entirely. It also returns
+     * AAAA records, and an IPv6 literal cannot be masked into an IPv4 network prefix; because the
+     * caller picks the lowest-sorted address, whether that happened at all depended on the
+     * particular addresses returned, so the failure came and went.</p>
+     *
+     * <p>Asking for {@code A} excludes AAAA by construction. The caller filters the result to IPv4
+     * anyway, so an address from any source is checked before it reaches the mask.</p>
      *
      * @param lookupHost the hostname to resolve.
-     * @return the resolved address literals; an empty set if the host cannot be resolved.
+     * @return the resolved address literals; an empty set if the host has no A record.
+     * @throws SdkClientException if the DNS lookup fails.
      */
     Set<String> resolveHostAddresses(String lookupHost) {
         try {
-            InetAddress[] addrs = InetAddress.getAllByName(lookupHost);
-            return Arrays.stream(addrs)
-                    .map(InetAddress::getHostAddress)
-                    .collect(Collectors.toUnmodifiableSet());
-        } catch (UnknownHostException e) {
+            DirContext ctx = new InitialDirContext(
+                    RegionProviderConfig.dnsEnv(dnsTimeoutMs, dnsRetries));
+            try {
+                Attributes attrs = ctx.getAttributes(lookupHost, new String[]{"A"});
+                Attribute aAttr = attrs.get("A");
+                if (aAttr == null || aAttr.size() == 0) {
+                    return Set.of();
+                }
+                Set<String> addresses = new LinkedHashSet<>();
+                NamingEnumeration<?> values = aAttr.getAll();
+                while (values.hasMore()) {
+                    String value = String.valueOf(values.next()).trim();
+                    if (!value.isEmpty()) {
+                        addresses.add(value);
+                    }
+                }
+                return Collections.unmodifiableSet(addresses);
+            } finally {
+                ctx.close();
+            }
+        } catch (NameNotFoundException e) {
+            // The name does not exist at all; let the caller report it as an unresolvable
+            // bootstrap host rather than as a DNS failure.
             return Set.of();
+        } catch (NamingException e) {
+            throw SdkClientException.create(
+                    "Failed to resolve A record for host: " + lookupHost, e);
         }
     }
 
@@ -217,9 +265,8 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
      */
     Optional<String> resolveTxtRecord(String lookupHost) {
         try {
-            Hashtable<String, String> env = new Hashtable<>();
-            env.put(DirContext.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.dns.DnsContextFactory");
-            DirContext ctx = new InitialDirContext(env);
+            DirContext ctx = new InitialDirContext(
+                    RegionProviderConfig.dnsEnv(dnsTimeoutMs, dnsRetries));
             try {
                 Attributes attrs = ctx.getAttributes(lookupHost, new String[]{"TXT"});
                 Attribute txtAttr = attrs.get("TXT");
@@ -238,31 +285,4 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
         }
     }
 
-    private static long parseRefreshSeconds(Map<String, String> config) {
-        String value = config != null ? config.get(REFRESH_SECONDS_KEY) : null;
-        if (value == null || value.isBlank()) {
-            return DEFAULT_REFRESH_SECONDS;
-        }
-        try {
-            return Math.max(0, Long.parseLong(value.trim()));
-        } catch (NumberFormatException e) {
-            log.warn("Invalid value for {}: '{}'. Using default {}s.",
-                    REFRESH_SECONDS_KEY, value, DEFAULT_REFRESH_SECONDS);
-            return DEFAULT_REFRESH_SECONDS;
-        }
-    }
-
-    private static class CachedRegion {
-        final Region region;
-        final Instant resolvedAt;
-
-        CachedRegion(Region region, Instant resolvedAt) {
-            this.region = region;
-            this.resolvedAt = resolvedAt;
-        }
-
-        boolean isExpired(Instant now, long refreshSeconds) {
-            return resolvedAt.plusSeconds(refreshSeconds).isBefore(now);
-        }
-    }
 }

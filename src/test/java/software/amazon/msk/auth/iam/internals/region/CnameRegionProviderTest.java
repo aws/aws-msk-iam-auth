@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.Test;
 import software.amazon.awssdk.core.exception.SdkClientException;
@@ -340,6 +341,139 @@ public class CnameRegionProviderTest {
             }
         };
         assertThrows(SdkClientException.class, () -> provider.getRegion(ENTRY_HOST));
+    }
+
+    @Test
+    public void testVerifiedRegionLaterInChainBeatsRegionShapedLabel() {
+        // us-prod-1 matches the aws partition's region naming pattern but is not a region. The walk
+        // must keep going and sign for the real region the chain terminates at.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = config(
+                ENTRY_HOST, "kafka.us-prod-1.customer.com",
+                "kafka.us-prod-1.customer.com", "nlb-abc123.elb.us-east-1.amazonaws.com");
+
+        Region region = provider(config("suffix", SUFFIX, "max.hops", "3"), chain, lookups)
+                .getRegion(ENTRY_HOST);
+
+        assertEquals(Region.US_EAST_1, region);
+        assertEquals(2, lookups.get());
+    }
+
+    @Test
+    public void testKnownRegionLaterInChainBeatsRegionShapedLabel() {
+        // Same preference when the better answer is a known region in the caller's own domain
+        // rather than an AWS endpoint name.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = config(
+                ENTRY_HOST, "msk.eu-blue-2.customer.com",
+                "msk.eu-blue-2.customer.com", "msk.eu-west-1.customer.com");
+
+        assertEquals(Region.EU_WEST_1,
+                provider(config("suffix", SUFFIX, "max.hops", "3"), chain, lookups)
+                        .getRegion(ENTRY_HOST));
+    }
+
+    @Test
+    public void testRegionShapedLabelUsedWhenChainYieldsNothingBetter() {
+        // Nothing better exists in the chain, so the pattern match stands. This is what keeps a
+        // region launched after this SDK release resolving.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain =
+                Collections.singletonMap(ENTRY_HOST, "kafka.us-prod-1.customer.com");
+
+        assertEquals("us-prod-1",
+                provider(config("suffix", SUFFIX, "max.hops", "3"), chain, lookups)
+                        .getRegion(ENTRY_HOST).id());
+    }
+
+    @Test
+    public void testKnownRegionStopsWalkWithoutExploringFurther() {
+        // A known region is trusted immediately, so a longer chain behind it is never walked.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = config(
+                ENTRY_HOST, "msk.us-east-1.customer.com",
+                "msk.us-east-1.customer.com", "msk.eu-west-1.customer.com");
+
+        Region region = provider(config("suffix", SUFFIX, "max.hops", "3"), chain, lookups)
+                .getRegion(ENTRY_HOST);
+
+        assertEquals(Region.US_EAST_1, region);
+        assertEquals(1, lookups.get());
+    }
+
+    @Test
+    public void testHugeMaxHopsDoesNotWrapToZeroHops() {
+        // Parsed as a long and cast, 4294967296 becomes 0 and the walk is skipped entirely.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = Collections.singletonMap(ENTRY_HOST, "msk.us-east-1.customer.com");
+
+        assertEquals(Region.US_EAST_1,
+                provider(config("suffix", SUFFIX, "max.hops", "4294967296"), chain, lookups)
+                        .getRegion(ENTRY_HOST));
+    }
+
+    @Test
+    public void testMaxHopsAtIntegerBoundaryDoesNotWrapNegative() {
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = Collections.singletonMap(ENTRY_HOST, "msk.us-east-1.customer.com");
+
+        assertEquals(Region.US_EAST_1,
+                provider(config("suffix", SUFFIX, "max.hops", "2147483648"), chain, lookups)
+                        .getRegion(ENTRY_HOST));
+    }
+
+    @Test
+    public void testHugeDnsRetriesDoesNotWrapNegative() {
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = Collections.singletonMap(ENTRY_HOST, "msk.us-east-1.customer.com");
+
+        assertEquals(Region.US_EAST_1,
+                provider(config("suffix", SUFFIX, "dns.retries", "4294967296"), chain, lookups)
+                        .getRegion(ENTRY_HOST));
+    }
+
+    @Test
+    public void testServesStaleRegionWhenChainWalkFailsAfterExpiry() {
+        AtomicReference<Instant> now = new AtomicReference<>(FIXED_CLOCK.instant());
+        Clock movable = new Clock() {
+            @Override
+            public ZoneId getZone() {
+                return ZoneId.of("UTC");
+            }
+
+            @Override
+            public Clock withZone(ZoneId zone) {
+                return this;
+            }
+
+            @Override
+            public Instant instant() {
+                return now.get();
+            }
+        };
+        AtomicReference<String> target = new AtomicReference<>("msk.us-east-1.customer.com");
+
+        CnameRegionProvider provider = new CnameRegionProvider(
+                config("suffix", SUFFIX, "refresh.seconds", "60"), movable) {
+            @Override
+            String resolveCname(String lookupHost) {
+                String next = target.get();
+                if (next == null) {
+                    throw SdkClientException.create("DNS is down");
+                }
+                return ENTRY_HOST.equals(lookupHost) ? next : null;
+            }
+        };
+
+        assertEquals(Region.US_EAST_1, provider.getRegion(ENTRY_HOST));
+
+        // DNS starts failing and the cached entry expires.
+        target.set(null);
+        now.updateAndGet(i -> i.plusSeconds(120));
+
+        assertEquals(Region.US_EAST_1, provider.getRegion(ENTRY_HOST),
+                "A failed refresh must serve the last known good region, not fall through to the "
+                        + "default provider chain");
     }
 
     @Test

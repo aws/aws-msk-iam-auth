@@ -16,10 +16,7 @@
 package software.amazon.msk.auth.iam.internals.region;
 
 import java.time.Clock;
-import java.time.Instant;
-import java.util.Hashtable;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -49,8 +46,20 @@ import software.amazon.awssdk.regions.Region;
  *       authentication with MSK and subsequent re-authentication to refresh
  *       session tokens. Caching reduces the number of Route 53 DNS calls,
  *       which is especially beneficial when authentication is retried
- *       repeatedly due to failures.</li>
+ *       repeatedly due to failures.
+ *       <p>When a refresh fails and a region was previously resolved for the same lookup name, the
+ *       last known good region is served rather than failing: falling back to the
+ *       {@code DefaultAwsRegionProviderChain} would resolve from the environment, profile file or
+ *       IMDS, none of which know about this TXT record, so its answer is very likely the wrong
+ *       region. Each stale serve is logged at WARN.</p></li>
+ *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
+ *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
+ *       timeout. Defaults to 2. Together with {@code dns.timeout.ms} this bounds how long an
+ *       unresponsive resolver can stall authentication.</li>
  * </ul>
+ *
+ * <p>The TXT value is validated as a region id before use, so a typo fails with a message naming
+ * the record instead of producing a signing region that no endpoint exists for.</p>
  *
  * <p>When no {@code host} is configured, the {@link #getRegion(String)} method
  * constructs the lookup name by prefixing the supplied host with {@code "region."}
@@ -61,16 +70,12 @@ import software.amazon.awssdk.regions.Region;
  */
 public class Route53RegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(Route53RegionProvider.class);
-    private static final String HOST_KEY = "host";
-
-    private static final String REFRESH_SECONDS_KEY = "refresh.seconds";
     private static final String REGION_PREFIX = "region.";
-    private static final long DEFAULT_REFRESH_SECONDS = 60;
 
     private final String host;
-    private final long refreshSeconds;
-    private final Clock clock;
-    private final ConcurrentHashMap<String, CachedRegion> cache = new ConcurrentHashMap<>();
+    private final long dnsTimeoutMs;
+    private final int dnsRetries;
+    private final CachedRegionResolver cache;
 
     public Route53RegionProvider(Map<String, String> config) {
         this(config, Clock.systemUTC());
@@ -78,12 +83,18 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
 
     // Visible for testing
     Route53RegionProvider(Map<String, String> config, Clock clock) {
-        this.host = config != null ? config.get(HOST_KEY) : null;
-        this.refreshSeconds = parseRefreshSeconds(config);
-        this.clock = clock;
+        this.host = config != null ? config.get(RegionProviderConfig.HOST_KEY) : null;
+        this.dnsTimeoutMs = RegionProviderConfig.parseLong(config,
+                RegionProviderConfig.DNS_TIMEOUT_MS_KEY, RegionProviderConfig.DEFAULT_DNS_TIMEOUT_MS, 1);
+        this.dnsRetries = RegionProviderConfig.parseBoundedInt(config,
+                RegionProviderConfig.DNS_RETRIES_KEY, RegionProviderConfig.DEFAULT_DNS_RETRIES, 0);
+        long refreshSeconds = RegionProviderConfig.parseLong(config,
+                RegionProviderConfig.REFRESH_SECONDS_KEY, RegionProviderConfig.DEFAULT_REFRESH_SECONDS, 0);
+        this.cache = new CachedRegionResolver(refreshSeconds, clock);
         if (log.isDebugEnabled()) {
-            log.debug("Route53RegionProvider initialized with host={}, refresh.seconds={}",
-                    this.host, this.refreshSeconds);
+            log.debug("Route53RegionProvider initialized with host={}, refresh.seconds={}, "
+                            + "dns.timeout.ms={}, dns.retries={}",
+                    this.host, refreshSeconds, this.dnsTimeoutMs, this.dnsRetries);
         }
     }
 
@@ -100,27 +111,13 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
                     "Cannot resolve region: no host configured and no host parameter provided");
         }
 
-        if (refreshSeconds > 0) {
-            CachedRegion cached = cache.get(lookupHost);
-            if (cached != null && !cached.isExpired(clock.instant(), refreshSeconds)) {
-                if (log.isDebugEnabled()) {
-                    log.debug("Returning cached region {} for host: {}", cached.region.id(), lookupHost);
-                }
-                return cached.region;
+        return cache.resolve(lookupHost, () -> {
+            if (log.isDebugEnabled()) {
+                log.debug("Resolving region via TXT record for host: {}", lookupHost);
             }
-        }
-
-        if (log.isDebugEnabled()) {
-            log.debug("Resolving region via TXT record for host: {}", lookupHost);
-        }
-        String regionId = resolveTxtRecord(lookupHost);
-        Region region = Region.of(regionId);
-
-        if (refreshSeconds > 0) {
-            cache.put(lookupHost, new CachedRegion(region, clock.instant()));
-        }
-
-        return region;
+            String regionId = resolveTxtRecord(lookupHost);
+            return RegionProviderConfig.validateRegionId(regionId, "the TXT record at " + lookupHost);
+        });
     }
 
     private String buildLookupHost(String host) {
@@ -146,9 +143,8 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
      */
     String resolveTxtRecord(String lookupHost) {
         try {
-            Hashtable<String, String> env = new Hashtable<>();
-            env.put(DirContext.INITIAL_CONTEXT_FACTORY, "com.sun.jndi.dns.DnsContextFactory");
-            DirContext ctx = new InitialDirContext(env);
+            DirContext ctx = new InitialDirContext(
+                    RegionProviderConfig.dnsEnv(dnsTimeoutMs, dnsRetries));
             try {
                 Attributes attrs = ctx.getAttributes(lookupHost, new String[]{"TXT"});
                 Attribute txtAttr = attrs.get("TXT");
@@ -168,35 +164,4 @@ public class Route53RegionProvider implements ConfigurableRegionProvider {
         }
     }
 
-    private static long parseRefreshSeconds(Map<String, String> config) {
-        if (config == null) {
-            return DEFAULT_REFRESH_SECONDS;
-        }
-        String value = config.get(REFRESH_SECONDS_KEY);
-        if (value == null || value.isBlank()) {
-            return DEFAULT_REFRESH_SECONDS;
-        }
-        try {
-            long parsed = Long.parseLong(value.trim());
-            return Math.max(0, parsed);
-        } catch (NumberFormatException e) {
-            log.warn("Invalid value for {}: '{}'. Using default {}s.",
-                    REFRESH_SECONDS_KEY, value, DEFAULT_REFRESH_SECONDS);
-            return DEFAULT_REFRESH_SECONDS;
-        }
-    }
-
-    private static class CachedRegion {
-        final Region region;
-        final Instant resolvedAt;
-
-        CachedRegion(Region region, Instant resolvedAt) {
-            this.region = region;
-            this.resolvedAt = resolvedAt;
-        }
-
-        boolean isExpired(Instant now, long refreshSeconds) {
-            return resolvedAt.plusSeconds(refreshSeconds).isBefore(now);
-        }
-    }
 }
