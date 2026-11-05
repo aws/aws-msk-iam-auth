@@ -26,22 +26,14 @@ import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.regions.Region;
 
 /**
- * Time-based region cache shared by the DNS-backed region providers, with last-known-good
- * behaviour when a refresh fails.
+ * Time-based region cache shared by the DNS-backed region providers, serving the last known good
+ * region when a refresh fails.
  *
- * <p>Resolution is lazy: an entry is only refreshed when an authentication request needs to be
- * signed, which typically happens during initial authentication with MSK and on subsequent
- * re-authentication to refresh session tokens. Caching reduces the number of DNS calls, which
- * matters most when authentication is retried repeatedly after a failure.</p>
- *
- * <p>When a refresh fails and a previously resolved region is held for that key, the stale region
- * is served instead of propagating the failure. A provider that propagated it would send the
- * caller to {@code DefaultAwsRegionProviderChain}, which resolves from environment variables, the
- * profile file or IMDS — none of which know anything about the DNS indirection these providers
- * exist to follow, so its answer is very likely the wrong region. The last known good region is
- * the better guess: a transient DNS failure is far more common than a failover, and the entry
- * refreshes as soon as DNS recovers. Each stale serve is logged at WARN so the underlying DNS
- * failure stays visible.</p>
+ * <p>Propagating a refresh failure instead would send the caller to
+ * {@code DefaultAwsRegionProviderChain}, which resolves from the environment, profile file or IMDS
+ * — none of which can see the DNS indirection these providers exist to follow, so its answer is
+ * very likely the wrong region. A transient DNS failure is also far more common than a failover.
+ * Each stale serve is logged at WARN so the underlying failure stays visible.
  */
 final class CachedRegionResolver {
     private static final Logger log = LoggerFactory.getLogger(CachedRegionResolver.class);

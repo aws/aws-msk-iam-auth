@@ -36,62 +36,25 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 
 /**
- * A {@link ConfigurableRegionProvider} that resolves the AWS region by following the CNAME chain
- * of a hostname and reading the region out of the names it resolves to, with time-based caching.
+ * A {@link ConfigurableRegionProvider} that resolves the AWS region by following a hostname's CNAME
+ * chain and reading the region out of the names it resolves to, with time-based caching.
  *
- * <p>This suits DNS layouts where a single stable endpoint name is a Route 53 failover CNAME over
- * per-region names in a customer-owned domain, so the active region is whichever name the alias
- * currently points at:</p>
+ * <p>For the DNS layout this expects and the full parameter list ({@code suffix}, {@code max.hops},
+ * {@code host}, plus the shared caching and DNS parameters), see the Custom Region Provider section
+ * of the README. Two constraints are easy to get wrong: the record at the top of the chain must be
+ * a CNAME rather than a Route 53 alias, which resolves internally and yields no hostname to read a
+ * region from; and the starting hostname must carry no region id, or {@link RegionUtils} resolves
+ * it directly and never consults this provider.
  *
- * <pre>
- *   msk.customer.com          CNAME (failover) -&gt; msk.us-east-1.customer.com -&gt; NLB in us-east-1
- *                                              -&gt; msk.us-west-2.customer.com -&gt; NLB in us-west-2
- * </pre>
+ * <p>Resolution order per hostname is the AWS endpoint parse, then — for names the configured
+ * {@code suffix} covers — the label immediately before that suffix and nothing else, then a
+ * label-exact scan for names the suffix does not cover. See {@link #suffixCovers(String)} for why
+ * the suffix is exclusive, and {@code resolveRegionViaCnameChain} for how a merely region-shaped
+ * label is held as provisional while the walk continues.
  *
- * <p>Because the record at the top of the chain must be a CNAME, this provider cannot resolve a
- * layout whose stable name is a Route 53 <em>alias</em> record pointing straight at a load
- * balancer: Route 53 resolves alias records internally, so the response carries only address
- * records and no target hostname to read a region from.</p>
- *
- * <p>Configuration parameters (passed via constructor map):</p>
- * <ul>
- *   <li>{@code host} — optional fully-qualified hostname to start the chain from. When provided,
- *       this value is used instead of the host supplied to {@link #getRegion(String)}. Set it to
- *       use this provider on the OAuth path, where no broker hostname is available and the no-arg
- *       {@link #getRegion()} is called.</li>
- *   <li>{@code suffix} — optional domain suffix owned by the caller, for example
- *       {@code customer.com}. When a resolved name ends with this suffix, the region is the label
- *       immediately before it, which pins the region to one position in the name and cannot be
- *       confused by a region-shaped label elsewhere. A leading dot is optional.</li>
- *   <li>{@code max.hops} — how many CNAME lookups to follow before giving up. Defaults to 3, with
- *       a floor of 1. Each hop is a sequential DNS round trip on the authentication path, so raise
- *       this only as far as the chain actually requires.</li>
- *   <li>{@code refresh.seconds} — how often, in seconds, the cached region value is refreshed by
- *       walking the chain again. Defaults to 60 (1 minute). Set to 0 to disable caching and resolve
- *       DNS on every call. Lazily evaluated: the cache is only refreshed when an authentication
- *       request needs to be signed. Note the failover implication — for up to this long after the
- *       alias flips, requests are signed for the previous region and fail, until the entry expires
- *       and the client's next authentication attempt picks up the new region.</li>
- *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
- *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
- *       timeout. Defaults to 4, which is the JDK default, so leaving both unset preserves the
- *       resolution behaviour from before these parameters existed. Together with
- *       {@code dns.timeout.ms} this bounds how long an
- *       unresponsive resolver can stall authentication, which matters here because a chain costs
- *       one lookup per hop.</li>
- * </ul>
- *
- * <p>Every name in the chain, starting with the host itself, is examined in three ways: the
- * AWS endpoint parse (so a chain terminating at a real AWS name such as
- * {@code ...elb.us-east-1.amazonaws.com} resolves precisely), then the configured {@code suffix}
- * anchor, then a label-exact scan of the whole name. The first name that yields a region this SDK
- * knows ends the walk, so no more DNS lookups are made than needed. A name that only yields a
- * region-shaped label is held as a provisional answer while the walk continues, and used only if
- * nothing better turns up; see {@code resolveRegionViaCnameChain}.</p>
- *
- * <p>When no name in the chain yields a region, an {@link SdkClientException} is thrown, which
+ * <p>When no name in the chain yields a region an {@link SdkClientException} is thrown, which
  * {@link RegionUtils} treats as a failed provider and falls back to the
- * {@code DefaultAwsRegionProviderChain}.</p>
+ * {@code DefaultAwsRegionProviderChain}.
  */
 public class CnameRegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(CnameRegionProvider.class);
@@ -227,19 +190,14 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
      * Reads a region out of a single hostname, accepting only answers that are trustworthy on their
      * own: the AWS endpoint parse, where the label sits in the region position of a name inside an
      * AWS-owned DNS suffix, and a label that is a region this SDK knows.
-     *
-     * <p>The label scan still runs when a {@code suffix} is configured but does not match, because
-     * a name part-way along the chain can legitimately sit outside the caller's own domain.</p>
      */
     private Optional<Region> extractVerifiedRegion(String bareHost) {
         Optional<Region> endpointRegion = RegionUtils.extractRegionFromEndpointHost(bareHost);
         if (endpointRegion.isPresent()) {
             return endpointRegion;
         }
-        Optional<Region> suffixRegion =
-                regionFromConfiguredSuffix(bareHost, RegionUtils::knownRegionFromLabel);
-        if (suffixRegion.isPresent()) {
-            return suffixRegion;
+        if (suffixCovers(bareHost)) {
+            return anchoredLabel(bareHost, RegionUtils::knownRegionFromLabel);
         }
         return RegionUtils.extractKnownRegionFromHostLabels(bareHost);
     }
@@ -250,23 +208,37 @@ public class CnameRegionProvider implements ConfigurableRegionProvider {
      * a partition naming pattern without being a region this SDK knows.
      */
     private Optional<Region> extractProvisionalRegion(String bareHost) {
-        Optional<Region> suffixRegion =
-                regionFromConfiguredSuffix(bareHost, RegionUtils::regionFromLabel);
-        if (suffixRegion.isPresent()) {
-            return suffixRegion;
+        if (suffixCovers(bareHost)) {
+            return anchoredLabel(bareHost, RegionUtils::regionFromLabel);
         }
         return RegionUtils.extractRegionFromHostLabels(bareHost);
     }
 
     /**
-     * Anchored parse against the caller's own domain: when the host ends with the configured
-     * suffix, the region is the label directly before it.
+     * Whether the configured {@code suffix} covers this hostname, meaning the caller has told us
+     * exactly which label position holds the region for names in this domain.
+     *
+     * <p>When it does, that position is the <em>only</em> answer this hostname can give, and a
+     * hostname whose anchored label is not a region yields nothing at all. Falling back to a scan
+     * of the other labels would defeat the parameter: a proxy hop such as
+     * {@code us-east-1.edge.customer.com} in a chain that ends at a {@code us-west-2} cluster
+     * anchors on {@code edge}, which is not a region, but carries {@code us-east-1} in another
+     * position. Accepting that would stop the walk and sign every request for the wrong region,
+     * with no error to fall back from.
+     *
+     * <p>Hostnames the suffix does not cover keep the broader interpretation, because a name
+     * part-way along the chain can legitimately sit outside the caller's own domain and the scan is
+     * then the best signal available.</p>
      */
-    private Optional<Region> regionFromConfiguredSuffix(String bareHost,
-                                                        Function<String, Optional<Region>> labelParser) {
-        if (suffix == null || !bareHost.endsWith("." + suffix)) {
-            return Optional.empty();
-        }
+    private boolean suffixCovers(String bareHost) {
+        return suffix != null && bareHost.endsWith("." + suffix);
+    }
+
+    /**
+     * The label directly before the configured suffix. Only valid when {@link #suffixCovers} holds.
+     */
+    private Optional<Region> anchoredLabel(String bareHost,
+                                           Function<String, Optional<Region>> labelParser) {
         String head = bareHost.substring(0, bareHost.length() - suffix.length() - 1);
         return labelParser.apply(head.substring(head.lastIndexOf('.') + 1));
     }

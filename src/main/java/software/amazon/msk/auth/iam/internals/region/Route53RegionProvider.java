@@ -31,44 +31,15 @@ import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.regions.Region;
 
 /**
- * A {@link ConfigurableRegionProvider} that resolves the AWS region by performing
- * a DNS TXT record lookup via Route 53, with time-based caching.
+ * A {@link ConfigurableRegionProvider} that resolves the AWS region from a DNS TXT record, with
+ * time-based caching.
  *
- * <p>Configuration parameters (passed via constructor map):</p>
- * <ul>
- *   <li>{@code host} — optional fully-qualified hostname to query for the TXT record.
- *       When provided, this value is used directly as the DNS lookup name.</li>
- *   <li>{@code refresh.seconds} — how often, in seconds, the cached region value
- *       is refreshed via a new DNS lookup. Defaults to 60 (1 minute).
- *       Set to 0 to disable caching and resolve DNS on every call.
- *       Uses lazy evaluation: the cache is only refreshed when an authentication
- *       request needs to be signed, which typically happens during initial
- *       authentication with MSK and subsequent re-authentication to refresh
- *       session tokens. Caching reduces the number of Route 53 DNS calls,
- *       which is especially beneficial when authentication is retried
- *       repeatedly due to failures.
- *       <p>When a refresh fails and a region was previously resolved for the same lookup name, the
- *       last known good region is served rather than failing: falling back to the
- *       {@code DefaultAwsRegionProviderChain} would resolve from the environment, profile file or
- *       IMDS, none of which know about this TXT record, so its answer is very likely the wrong
- *       region. Each stale serve is logged at WARN.</p></li>
- *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
- *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
- *       timeout. Defaults to 4, which is the JDK default, so leaving both unset preserves the
- *       resolution behaviour from before these parameters existed. Together with
- *       {@code dns.timeout.ms} this bounds how long an
- *       unresponsive resolver can stall authentication.</li>
- * </ul>
+ * <p>For the parameter list see the Custom Region Provider section of the README. When no
+ * {@code host} is configured the lookup name is the supplied host prefixed with {@code "region."},
+ * for example {@code region.broker.example.com}.
  *
- * <p>The TXT value is validated as a region id before use, so a typo fails with a message naming
- * the record instead of producing a signing region that no endpoint exists for.</p>
- *
- * <p>When no {@code host} is configured, the {@link #getRegion(String)} method
- * constructs the lookup name by prefixing the supplied host with {@code "region."}
- * (e.g. {@code "region.broker.example.com"}).</p>
- *
- * <p>The TXT record value is expected to contain a valid AWS region id
- * (e.g. {@code "us-east-1"}).</p>
+ * <p>Only the first TXT value is read: the record is expected to be a dedicated,
+ * environment-controlled record whose sole value is the active AWS region id.
  */
 public class Route53RegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(Route53RegionProvider.class);

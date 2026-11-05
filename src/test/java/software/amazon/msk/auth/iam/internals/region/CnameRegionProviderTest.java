@@ -374,6 +374,51 @@ public class CnameRegionProviderTest {
     }
 
     @Test
+    public void testConfiguredSuffixIsAuthoritativeWhenItsAnchoredLabelIsNotARegion() {
+        // A proxy hop inside the caller's own domain whose anchored label is not a region, but
+        // which carries a region id in a different position. The suffix parameter exists to pin
+        // the region to one label position, so for a name the suffix covers, that position is the
+        // only answer: this hop must yield nothing and the walk must continue to the name that
+        // actually identifies the cluster's region. Scanning other labels here would resolve
+        // us-east-1 for a cluster in us-west-2.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain = config(
+                ENTRY_HOST, "us-east-1.edge.customer.com",
+                "us-east-1.edge.customer.com", "msk.us-west-2.customer.com");
+
+        Region region = provider(config("suffix", SUFFIX, "max.hops", "3"), chain, lookups)
+                .getRegion(ENTRY_HOST);
+
+        assertEquals(Region.US_WEST_2, region);
+        assertEquals(2, lookups.get(), "The walk must not stop at the proxy hop");
+    }
+
+    @Test
+    public void testSuffixCoveredHopWithNonRegionLabelIsNotEvenProvisional() {
+        // Same shape, but nothing better exists further along. The anchored label is not region
+        // shaped, so the hop yields nothing at all rather than falling back to a region id found
+        // elsewhere in the name, and the walk ends without a region.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain =
+                Collections.singletonMap(ENTRY_HOST, "us-east-1.edge.customer.com");
+
+        CnameRegionProvider provider = provider(config("suffix", SUFFIX), chain, lookups);
+        assertThrows(SdkClientException.class, () -> provider.getRegion(ENTRY_HOST));
+    }
+
+    @Test
+    public void testLabelScanStillAppliesToHopsOutsideTheConfiguredSuffix() {
+        // A hop outside the caller's own domain is not covered by the suffix, so the label scan is
+        // still the best available signal for it.
+        AtomicInteger lookups = new AtomicInteger();
+        Map<String, String> chain =
+                Collections.singletonMap(ENTRY_HOST, "msk.eu-central-1.third-party.example");
+
+        assertEquals(Region.EU_CENTRAL_1,
+                provider(config("suffix", SUFFIX), chain, lookups).getRegion(ENTRY_HOST));
+    }
+
+    @Test
     public void testRegionShapedLabelUsedWhenChainYieldsNothingBetter() {
         // Nothing better exists in the chain, so the pattern match stands. This is what keeps a
         // region launched after this SDK release resolving.

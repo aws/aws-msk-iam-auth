@@ -40,63 +40,19 @@ import software.amazon.msk.auth.iam.internals.utils.RegionUtils;
 
 /**
  * A {@link ConfigurableRegionProvider} that resolves the AWS region from the <em>resolved IP
- * address</em> of a bootstrap DNS name, rather than from a fixed record on the name itself, with
+ * address</em> of a bootstrap DNS name rather than from a record on the name itself, with
  * time-based caching.
  *
- * <p>This suits layouts where a single stable bootstrap name (e.g. {@code msk.example.com}) can
- * repoint from a cluster in one region to a cluster in another, and the active region is signalled
- * by the network the name currently resolves into. Because the SigV4 signature must be signed for
- * the region the cluster actually lives in, the signing region is discovered from wherever the
- * bootstrap name currently resolves.</p>
+ * <p>Suits layouts where a stable bootstrap name repoints between clusters in different regions and
+ * the active region is signalled by the network it resolves into. The bootstrap A record is
+ * resolved, the {@code masking} prefix length applied to get the network prefix, that prefix
+ * dash-encoded into a label and prepended to the host to form a TXT lookup name (for example
+ * {@code 10-218-0-0.msk.example.com}), whose value is the region id. For the parameter list see the
+ * Custom Region Provider section of the README.
  *
- * <p>Resolution flow:</p>
- * <ol>
- *   <li>Resolve the bootstrap {@code host} A record to an IP, e.g. {@code 10.218.4.7}. When the
- *       name has several A records, the lowest-sorted address is chosen so records sharing a
- *       network prefix still yield one stable lookup name.</li>
- *   <li>Apply the {@code masking} CIDR prefix length (e.g. {@code /16}) to that IP to get the
- *       network prefix, e.g. {@code 10.218.0.0}.</li>
- *   <li>Dash-encode the prefix and prepend it to {@code host} to build the TXT lookup name,
- *       e.g. {@code 10-218-0-0.msk.example.com}.</li>
- *   <li>Resolve that TXT record to a region id, e.g. {@code "us-east-1"}, and return
- *       {@link Region#of(String)}.</li>
- * </ol>
- *
- * <p>Configuration parameters (passed via constructor map):</p>
- * <ul>
- *   <li>{@code host} — optional bootstrap hostname to resolve. When provided, this value is used
- *       instead of the host supplied to {@link #getRegion(String)}. Set it to use this provider on
- *       the OAuth path, where no broker hostname is available and the no-arg {@link #getRegion()}
- *       is called.</li>
- *   <li>{@code masking} — required. CIDR-style mask whose prefix length is applied to the resolved
- *       IP, e.g. {@code 0.0.0.0/16}. Only the {@code /NN} portion matters; the address portion is
- *       ignored. Must be octet-aligned ({@code /8}, {@code /16}, {@code /24}, {@code /32}).</li>
- *   <li>{@code refresh.seconds} — how often, in seconds, the cached region value is refreshed by
- *       resolving DNS again. Defaults to 60 (1 minute). Set to 0 to disable caching and resolve DNS
- *       on every call. Lazily evaluated: the cache is only refreshed when an authentication request
- *       needs to be signed. Note the failover implication — for up to this long after the bootstrap
- *       name repoints, requests are signed for the previous region and fail, until the entry
- *       expires and the client's next authentication attempt picks up the new region.
- *       <p>When a refresh fails and a region was previously resolved for the same bootstrap host,
- *       the last known good region is served rather than failing; see
- *       {@link CachedRegionResolver}.</p></li>
- *   <li>{@code dns.timeout.ms} — initial DNS query timeout in milliseconds. Defaults to 1000.</li>
- *   <li>{@code dns.retries} — how many times a DNS query is retried, each retry doubling the
- *       timeout. Defaults to 4, which is the JDK default, so leaving both unset preserves the
- *       resolution behaviour from before these parameters existed. Together with
- *       {@code dns.timeout.ms} this bounds how long an
- *       unresponsive resolver can stall authentication, which matters here because resolution
- *       costs two lookups: the bootstrap A record and the region TXT record.</li>
- * </ul>
- *
- * <p>Both lookups go through JNDI DNS rather than {@link InetAddress}, so they are unaffected by
- * the JVM-wide address cache and see only IPv4 A records. The TXT value is validated as a region id
- * before use, so a typo fails with a message naming the record instead of producing a signing
- * region that no endpoint exists for.</p>
- *
- * <p>When the bootstrap IP or the region TXT record cannot be resolved, an
- * {@link SdkClientException} is thrown, which {@link RegionUtils} treats as a failed provider and
- * falls back to the {@code DefaultAwsRegionProviderChain}.</p>
+ * <p>Both lookups go through JNDI DNS rather than {@link InetAddress}; see
+ * {@link #resolveHostAddresses(String)} for why that matters. IPv4 only: an IPv6 address cannot be
+ * masked into a dotted-quad network prefix.
  */
 public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
     private static final Logger log = LoggerFactory.getLogger(LookupDnsRegionProvider.class);
@@ -205,17 +161,11 @@ public class LookupDnsRegionProvider implements ConfigurableRegionProvider {
      * with the {@code com.sun.jndi.dns.DnsContextFactory} built-in JDK DNS provider — the same
      * mechanism as {@link #resolveTxtRecord(String)}.
      *
-     * <p>Querying DNS directly rather than through {@link InetAddress#getAllByName(String)} matters
-     * twice over. {@code InetAddress} answers from the JVM-wide address cache, whose default
-     * positive TTL is 30 seconds and is unbounded when a security manager is installed, so a
-     * repointed bootstrap name would keep resolving to the old network well past this provider's
-     * own {@code refresh.seconds} — including when caching is disabled entirely. It also returns
-     * AAAA records, and an IPv6 literal cannot be masked into an IPv4 network prefix; because the
-     * caller picks the lowest-sorted address, whether that happened at all depended on the
-     * particular addresses returned, so the failure came and went.</p>
-     *
-     * <p>Asking for {@code A} excludes AAAA by construction. The caller filters the result to IPv4
-     * anyway, so an address from any source is checked before it reaches the mask.</p>
+     * <p>Deliberately not {@link InetAddress#getAllByName(String)}: that answers from the JVM-wide
+     * address cache, whose default positive TTL is 30 seconds and is unbounded under a security
+     * manager, so a repointed bootstrap name would keep resolving to the old network well past this
+     * provider's own {@code refresh.seconds} — including when caching is disabled. It also returns
+     * AAAA records, which cannot be masked into an IPv4 prefix.</p>
      *
      * @param lookupHost the hostname to resolve.
      * @return the resolved address literals; an empty set if the host has no A record.
