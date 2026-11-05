@@ -34,6 +34,14 @@ public class RegionUtils {
    */
   private static final Map<String, List<Pattern>> ENDPOINT_DNS_SUFFIXES = endpointDnsSuffixes();
 
+  /**
+   * Every region-id pattern this SDK's partition metadata knows, flattened across partitions and
+   * deduplicated. Used by {@link #regionFromLabel(String)} when there is no partition-owned DNS
+   * suffix to narrow the candidate patterns — for example when reading the region out of a
+   * customer-owned hostname such as {@code msk.us-east-1.customer.com}.
+   */
+  private static final List<Pattern> ALL_REGION_PATTERNS = allRegionPatterns();
+
   private static final Pattern TRAILING_PORT = Pattern.compile(":\\d+$");
 
   /**
@@ -69,7 +77,7 @@ public class RegionUtils {
    * @return The region extracted from the host or resolved by the provider.
    */
   public static Region extractRegionFromHost(String host, ConfigurableRegionProvider regionProvider) {
-    Optional<Region> anchored = extractRegionFromSuffixAnchoredHost(host);
+    Optional<Region> anchored = extractRegionFromEndpointHost(host);
     if (anchored.isPresent()) {
       return anchored.get();
     }
@@ -106,15 +114,20 @@ public class RegionUtils {
    * arbitrary unanchored string would mint a Region for anything). Returns empty when no suffix
    * matches or no matched suffix yields a region-shaped label, so the caller falls through to
    * the legacy behaviour.
+   *
+   * <p>Public so that a {@link ConfigurableRegionProvider} resolving an indirection such as a
+   * CNAME chain can apply the same anchored parse to each hostname it discovers: a chain
+   * frequently terminates at a genuine AWS endpoint name (for example an
+   * {@code ...elb.us-east-1.amazonaws.com} load balancer), which this parse reads precisely.
+   *
+   * @param host the hostname to parse. May carry a port, a trailing root dot or mixed case.
+   * @return the endpoint's region, or empty if the host is not an AWS endpoint name.
    */
-  private static Optional<Region> extractRegionFromSuffixAnchoredHost(String host) {
-    // Normalize to the bare hostname a URL parser would yield: strip surrounding whitespace, a
-    // trailing :port and a fully-qualified trailing root dot. DNS names are case-insensitive, so
-    // compare in lower case.
-    String bareHost = TRAILING_PORT.matcher(host.trim()).replaceFirst("").toLowerCase(Locale.ROOT);
-    if (bareHost.endsWith(".")) {
-      bareHost = bareHost.substring(0, bareHost.length() - 1);
+  public static Optional<Region> extractRegionFromEndpointHost(String host) {
+    if (host == null) {
+      return Optional.empty();
     }
+    String bareHost = normalizeHost(host);
     for (Map.Entry<String, List<Pattern>> entry : ENDPOINT_DNS_SUFFIXES.entrySet()) {
       if (!bareHost.endsWith(entry.getKey())) {
         continue;
@@ -127,9 +140,7 @@ public class RegionUtils {
       if (candidate.isEmpty() || candidate.length() > 63) {
         continue;
       }
-      Optional<Region> known = Region.regions().stream()
-          .filter(region -> region.id().equals(candidate))
-          .findFirst();
+      Optional<Region> known = knownRegion(candidate);
       if (known.isPresent()) {
         return known;
       }
@@ -142,6 +153,157 @@ public class RegionUtils {
       // than concluding early, in case suffixes ever overlap.
     }
     return Optional.empty();
+  }
+
+  /**
+   * Label-exact scan of a hostname that is not anchored on any AWS partition suffix: split the
+   * host into DNS labels and return the first label that is itself a region.
+   *
+   * <p>Intended for customer-owned hostnames that encode the region in a label, such as
+   * {@code msk.us-east-1.customer.com}. Requiring a whole label to be the region is stricter than
+   * the substring scan in {@link #extractRegionFromHost(String, ConfigurableRegionProvider)}: a
+   * cluster named {@code demo-us-west-1-app} cannot match, because {@code us-west-1} is only part
+   * of that label. It remains a heuristic, since any label that happens to be region-shaped will
+   * match wherever it sits in the name. Anchor on a known suffix instead when the exact position
+   * of the region label is known.
+   *
+   * @param host the hostname to scan. May carry a port, a trailing root dot or mixed case.
+   * @return the first label that resolves to a region, or empty if no label does.
+   */
+  public static Optional<Region> extractRegionFromHostLabels(String host) {
+    return scanLabels(host, RegionUtils::regionFromLabel);
+  }
+
+  /**
+   * Label-exact scan restricted to regions this SDK knows, ignoring the partition naming patterns.
+   *
+   * <p>Lets a caller tell a verified region from a merely region-shaped label. The naming patterns
+   * are permissive enough to match plausible non-region labels — the {@code aws} partition pattern
+   * accepts {@code us-prod-1} and {@code eu-blue-2} — which is acceptable when the label sits in
+   * the region position of an AWS-owned endpoint name but is a guess when it comes from a
+   * customer-owned hostname. A caller walking several hostnames can use this to prefer a hostname
+   * that yields a known region over one that only yields a pattern match, and fall back to
+   * {@link #extractRegionFromHostLabels(String)} when nothing better turns up.
+   *
+   * @param host the hostname to scan. May carry a port, a trailing root dot or mixed case.
+   * @return the first label that is a region id in this SDK's region list, or empty if none is.
+   */
+  public static Optional<Region> extractKnownRegionFromHostLabels(String host) {
+    return scanLabels(host, RegionUtils::knownRegionFromLabel);
+  }
+
+  private static Optional<Region> scanLabels(String host,
+      java.util.function.Function<String, Optional<Region>> labelParser) {
+    if (host == null) {
+      return Optional.empty();
+    }
+    for (String label : normalizeHost(host).split("\\.")) {
+      Optional<Region> region = labelParser.apply(label);
+      if (region.isPresent()) {
+        return region;
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Interpret a single DNS label, or an operator-supplied region id, as an AWS region.
+   *
+   * <p>A label in this SDK's region list is returned directly. A label that is not in the list is
+   * accepted when it matches the region naming pattern of any partition this SDK knows, so that
+   * regions launched after this release still resolve. Because the caller has already narrowed the
+   * input to one label in a region-bearing position, {@link Region#of} is safe here; calling it on
+   * an arbitrary string would mint a Region for anything.
+   *
+   * <p>The naming patterns are permissive: the {@code aws} partition pattern
+   * {@code ^(us|eu|ap|sa|ca|me|af|il|mx)\-\w+\-\d+$} also matches labels that are not regions at
+   * all, such as {@code us-prod-1}. Accepting them is deliberate, because rejecting unknown labels
+   * would stop a region launched after this release from resolving, but it means a match here is
+   * not proof the region exists. Use {@link #knownRegionFromLabel(String)} when the caller can act
+   * on that distinction.
+   *
+   * @param label a single DNS label, without dots.
+   * @return the region the label denotes, or empty if it is not region-shaped.
+   */
+  public static Optional<Region> regionFromLabel(String label) {
+    String candidate = normalizeLabel(label);
+    if (candidate == null) {
+      return Optional.empty();
+    }
+    Optional<Region> known = knownRegion(candidate);
+    if (known.isPresent()) {
+      return known;
+    }
+    for (Pattern regionPattern : ALL_REGION_PATTERNS) {
+      if (regionPattern.matcher(candidate).matches()) {
+        return Optional.of(Region.of(candidate));
+      }
+    }
+    return Optional.empty();
+  }
+
+  /**
+   * Interpret a single DNS label as a region id this SDK knows, without the partition pattern
+   * tolerance of {@link #regionFromLabel(String)}.
+   *
+   * @param label a single DNS label, without dots.
+   * @return the region, or empty if the label is not in this SDK's region list.
+   */
+  public static Optional<Region> knownRegionFromLabel(String label) {
+    String candidate = normalizeLabel(label);
+    return candidate == null ? Optional.empty() : knownRegion(candidate);
+  }
+
+  /**
+   * Normalize a candidate label for comparison, returning null when it cannot be a region id.
+   */
+  private static String normalizeLabel(String label) {
+    if (label == null) {
+      return null;
+    }
+    String candidate = label.trim().toLowerCase(Locale.ROOT);
+    // A DNS label is at most 63 characters (RFC 1035), so anything longer cannot be a region.
+    if (candidate.isEmpty() || candidate.length() > 63) {
+      return null;
+    }
+    return candidate;
+  }
+
+  /**
+   * Reduce a host to the bare hostname a URL parser would yield: strip surrounding whitespace, a
+   * trailing {@code :port} and a fully-qualified trailing root dot. DNS names are case-insensitive,
+   * so the result is lower-cased for comparison.
+   *
+   * @param host the host to normalize.
+   * @return the normalized hostname.
+   */
+  public static String normalizeHost(String host) {
+    String bareHost = TRAILING_PORT.matcher(host.trim()).replaceFirst("").toLowerCase(Locale.ROOT);
+    if (bareHost.endsWith(".")) {
+      bareHost = bareHost.substring(0, bareHost.length() - 1);
+    }
+    return bareHost;
+  }
+
+  private static Optional<Region> knownRegion(String candidate) {
+    return Region.regions().stream()
+        .filter(region -> region.id().equals(candidate))
+        .findFirst();
+  }
+
+  private static List<Pattern> allRegionPatterns() {
+    // Derived from ENDPOINT_DNS_SUFFIXES, which is already guarded against malformed SDK metadata,
+    // so this cannot be the thing that fails class loading for the auth path.
+    Set<String> seen = new LinkedHashSet<>();
+    List<Pattern> patterns = new ArrayList<>();
+    for (List<Pattern> partitionPatterns : ENDPOINT_DNS_SUFFIXES.values()) {
+      for (Pattern pattern : partitionPatterns) {
+        if (seen.add(pattern.pattern())) {
+          patterns.add(pattern);
+        }
+      }
+    }
+    return Collections.unmodifiableList(patterns);
   }
 
   private static Map<String, List<Pattern>> endpointDnsSuffixes() {
