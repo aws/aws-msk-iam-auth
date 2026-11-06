@@ -18,8 +18,10 @@ package software.amazon.msk.auth.iam.internals;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -165,6 +167,76 @@ public class MSKCredentialProviderTest {
         provider.close();
 
         assertEquals(1, defaultProvider.closeCount);
+    }
+
+    @Test
+    public void testInstanceProfileProviderUsesCredentialRefreshWindow() {
+        InstanceProfileCredentialsProvider.Builder builder = Mockito.mock(
+                InstanceProfileCredentialsProvider.Builder.class, Mockito.RETURNS_SELF);
+        InstanceProfileCredentialsProvider provider = Mockito.mock(InstanceProfileCredentialsProvider.class);
+        try (org.mockito.MockedStatic<InstanceProfileCredentialsProvider> mocked =
+                     Mockito.mockStatic(InstanceProfileCredentialsProvider.class)) {
+            mocked.when(InstanceProfileCredentialsProvider::builder).thenReturn(builder);
+            Mockito.when(builder.build()).thenReturn(provider);
+
+            MSKCredentialProvider.createInstanceProfileCredentialsProvider(true);
+
+            Mockito.verify(builder).asyncCredentialUpdateEnabled(true);
+            Mockito.verify(builder).staleTime(Duration.ofMinutes(5));
+        }
+    }
+
+    @Test
+    public void testWebIdentityProviderUsesCredentialRefreshWindow() {
+        WebIdentityTokenFileCredentialsProvider.Builder builder = Mockito.mock(
+                WebIdentityTokenFileCredentialsProvider.Builder.class, Mockito.RETURNS_SELF);
+        WebIdentityTokenFileCredentialsProvider provider = Mockito.mock(WebIdentityTokenFileCredentialsProvider.class);
+        try (org.mockito.MockedStatic<WebIdentityTokenFileCredentialsProvider> mocked =
+                     Mockito.mockStatic(WebIdentityTokenFileCredentialsProvider.class)) {
+            mocked.when(WebIdentityTokenFileCredentialsProvider::builder).thenReturn(builder);
+            Mockito.when(builder.build()).thenReturn(provider);
+
+            MSKCredentialProvider.createWebIdentityTokenFileCredentialsProvider();
+
+            Mockito.verify(builder).asyncCredentialUpdateEnabled(true);
+            Mockito.verify(builder).prefetchTime(Duration.ofMinutes(10));
+            Mockito.verify(builder).staleTime(Duration.ofMinutes(5));
+        }
+    }
+
+    @Test
+    public void testAssumeRoleProvidersUseCredentialRefreshWindow() {
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1"));
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1",
+                AWS_ROLE_ACCESS_KEY_ID, ACCESS_KEY_VALUE,
+                AWS_ROLE_SECRET_ACCESS_KEY, SECRET_KEY_VALUE));
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1",
+                AWS_ROLE_EXTERNAL_ID, TEST_ROLE_EXTERNAL_ID));
+    }
+
+    private void assertAssumeRoleProviderRefreshWindow(Map<String, String> options) {
+        List<AwsCredentialsProvider> providers = new MSKCredentialProvider.ProviderBuilder(options).getProviders();
+        try {
+            assertEquals(1, providers.size());
+            assertTrue(providers.get(0) instanceof StsAssumeRoleCredentialsProvider);
+            StsAssumeRoleCredentialsProvider provider = (StsAssumeRoleCredentialsProvider) providers.get(0);
+            assertEquals(Duration.ofMinutes(5), provider.staleTime());
+            assertEquals(Duration.ofMinutes(10), provider.prefetchTime());
+        } finally {
+            providers.stream().filter(AutoCloseable.class::isInstance).forEach(provider -> {
+                try {
+                    ((AutoCloseable) provider).close();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
     }
 
     private static class CloseTrackingProvider implements AwsCredentialsProvider, AutoCloseable {
