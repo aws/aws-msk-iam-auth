@@ -98,6 +98,9 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     private static final String GLOBAL_REGION = "aws-global";
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
+    // Refresh temporary credentials before they can expire during an MSK IAM token session.
+    private static final Duration DEFAULT_CREDENTIAL_STALE_TIME = Duration.ofMinutes(5);
+    private static final Duration DEFAULT_CREDENTIAL_PREFETCH_TIME = Duration.ofMinutes(10);
     private static final Duration BASE_DELAY = Duration.ofMillis(500);
 
     private final List<AutoCloseable> closeableProviders;
@@ -197,11 +200,26 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         return AwsCredentialsProviderChain.of(
             EnvironmentVariableCredentialsProvider.create(),
             SystemPropertyCredentialsProvider.create(),
-            WebIdentityTokenFileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
+            createWebIdentityTokenFileCredentialsProvider(),
             ProfileCredentialsProvider.builder().profileFile(ProfileFileSupplier.defaultSupplier()).build(),
             ContainerCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
-            InstanceProfileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build()
+            createInstanceProfileCredentialsProvider(true)
         );
+    }
+
+    static WebIdentityTokenFileCredentialsProvider createWebIdentityTokenFileCredentialsProvider() {
+        return WebIdentityTokenFileCredentialsProvider.builder()
+                .asyncCredentialUpdateEnabled(true)
+                .prefetchTime(DEFAULT_CREDENTIAL_PREFETCH_TIME)
+                .staleTime(DEFAULT_CREDENTIAL_STALE_TIME)
+                .build();
+    }
+
+    static InstanceProfileCredentialsProvider createInstanceProfileCredentialsProvider(boolean asyncCredentialUpdateEnabled) {
+        return InstanceProfileCredentialsProvider.builder()
+                .asyncCredentialUpdateEnabled(asyncCredentialUpdateEnabled)
+                .staleTime(DEFAULT_CREDENTIAL_STALE_TIME)
+                .build();
     }
 
     @Override
@@ -510,6 +528,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .prefetchTime(DEFAULT_CREDENTIAL_PREFETCH_TIME)
+                .staleTime(DEFAULT_CREDENTIAL_STALE_TIME)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
         }
@@ -529,6 +549,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .prefetchTime(DEFAULT_CREDENTIAL_PREFETCH_TIME)
+                .staleTime(DEFAULT_CREDENTIAL_STALE_TIME)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
         }
@@ -547,6 +569,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(getStsClientBuilder(Region.of(stsRegion), shouldUseFips).build())
                 .refreshRequest(roleRequest)
+                .prefetchTime(DEFAULT_CREDENTIAL_PREFETCH_TIME)
+                .staleTime(DEFAULT_CREDENTIAL_STALE_TIME)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
         }
