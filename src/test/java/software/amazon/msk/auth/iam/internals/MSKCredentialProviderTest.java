@@ -18,8 +18,10 @@ package software.amazon.msk.auth.iam.internals;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -81,6 +83,8 @@ public class MSKCredentialProviderTest {
     private static final String AWS_PROFILE_NAME = "awsProfileName";
     private static final String AWS_DEBUG_CREDS_NAME = "awsDebugCreds";
     private static final String AWS_ADD_DEFAULT_PROVIDERS = "awsAddDefaultProviders";
+    private static final String AWS_CREDENTIAL_STALE_TIME_SECONDS = "awsCredentialStaleTimeSeconds";
+    private static final String AWS_CREDENTIAL_PREFETCH_TIME_SECONDS = "awsCredentialPrefetchTimeSeconds";
 
     /**
      * If no options are passed in it should use the default credentials provider
@@ -165,6 +169,113 @@ public class MSKCredentialProviderTest {
         provider.close();
 
         assertEquals(1, defaultProvider.closeCount);
+    }
+
+    @Test
+    public void testInstanceProfileProviderUsesCredentialRefreshWindow() {
+        Duration staleTime = Duration.ofSeconds(120);
+        InstanceProfileCredentialsProvider.Builder builder = Mockito.mock(
+                InstanceProfileCredentialsProvider.Builder.class, Mockito.RETURNS_SELF);
+        InstanceProfileCredentialsProvider provider = Mockito.mock(InstanceProfileCredentialsProvider.class);
+        try (org.mockito.MockedStatic<InstanceProfileCredentialsProvider> mocked =
+                     Mockito.mockStatic(InstanceProfileCredentialsProvider.class)) {
+            mocked.when(InstanceProfileCredentialsProvider::builder).thenReturn(builder);
+            Mockito.when(builder.build()).thenReturn(provider);
+
+            MSKCredentialProvider.createInstanceProfileCredentialsProvider(true, staleTime);
+
+            Mockito.verify(builder).asyncCredentialUpdateEnabled(true);
+            Mockito.verify(builder).staleTime(staleTime);
+        }
+    }
+
+    @Test
+    public void testWebIdentityProviderUsesCredentialRefreshWindow() {
+        Duration staleTime = Duration.ofSeconds(120);
+        Duration prefetchTime = Duration.ofSeconds(240);
+        WebIdentityTokenFileCredentialsProvider.Builder builder = Mockito.mock(
+                WebIdentityTokenFileCredentialsProvider.Builder.class, Mockito.RETURNS_SELF);
+        WebIdentityTokenFileCredentialsProvider provider = Mockito.mock(WebIdentityTokenFileCredentialsProvider.class);
+        try (org.mockito.MockedStatic<WebIdentityTokenFileCredentialsProvider> mocked =
+                     Mockito.mockStatic(WebIdentityTokenFileCredentialsProvider.class)) {
+            mocked.when(WebIdentityTokenFileCredentialsProvider::builder).thenReturn(builder);
+            Mockito.when(builder.build()).thenReturn(provider);
+
+            MSKCredentialProvider.createWebIdentityTokenFileCredentialsProvider(
+                    staleTime, prefetchTime);
+
+            Mockito.verify(builder).asyncCredentialUpdateEnabled(true);
+            Mockito.verify(builder).prefetchTime(prefetchTime);
+            Mockito.verify(builder).staleTime(staleTime);
+        }
+    }
+
+    @Test
+    public void testAssumeRoleProvidersUseCredentialRefreshWindow() {
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1"), Duration.ofMinutes(5), Duration.ofMinutes(10));
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1",
+                AWS_ROLE_ACCESS_KEY_ID, ACCESS_KEY_VALUE,
+                AWS_ROLE_SECRET_ACCESS_KEY, SECRET_KEY_VALUE), Duration.ofMinutes(5), Duration.ofMinutes(10));
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1",
+                AWS_ROLE_EXTERNAL_ID, TEST_ROLE_EXTERNAL_ID), Duration.ofMinutes(5), Duration.ofMinutes(10));
+        assertAssumeRoleProviderRefreshWindow(Map.of(
+                AWS_ROLE_ARN, TEST_ROLE_ARN,
+                AWS_STS_REGION, "us-east-1",
+                AWS_CREDENTIAL_STALE_TIME_SECONDS, "120",
+                AWS_CREDENTIAL_PREFETCH_TIME_SECONDS, "240"), Duration.ofSeconds(120), Duration.ofSeconds(240));
+    }
+
+    @Test
+    public void testCredentialRefreshWindowsCanBeConfigured() {
+        Map<String, String> options = Map.of(
+                AWS_CREDENTIAL_STALE_TIME_SECONDS, "120",
+                AWS_CREDENTIAL_PREFETCH_TIME_SECONDS, "240");
+        MSKCredentialProvider.ProviderBuilder builder = new MSKCredentialProvider.ProviderBuilder(options);
+
+        assertEquals(Duration.ofSeconds(120), builder.getCredentialStaleTime());
+        assertEquals(Duration.ofSeconds(240), builder.getCredentialPrefetchTime());
+    }
+
+    @Test
+    public void testCredentialRefreshWindowsDefaultWhenNotConfigured() {
+        MSKCredentialProvider.ProviderBuilder builder = new MSKCredentialProvider.ProviderBuilder(Collections.emptyMap());
+
+        assertEquals(Duration.ofMinutes(5), builder.getCredentialStaleTime());
+        assertEquals(Duration.ofMinutes(10), builder.getCredentialPrefetchTime());
+    }
+
+    @Test
+    public void testCredentialRefreshWindowsMustBePositive() {
+        Map<String, String> options = Map.of(AWS_CREDENTIAL_STALE_TIME_SECONDS, "0");
+        MSKCredentialProvider.ProviderBuilder builder = new MSKCredentialProvider.ProviderBuilder(options);
+
+        assertThrows(IllegalArgumentException.class, builder::getCredentialStaleTime);
+    }
+
+    private void assertAssumeRoleProviderRefreshWindow(
+            Map<String, String> options, Duration staleTime, Duration prefetchTime) {
+        List<AwsCredentialsProvider> providers = new MSKCredentialProvider.ProviderBuilder(options).getProviders();
+        try {
+            assertEquals(1, providers.size());
+            assertTrue(providers.get(0) instanceof StsAssumeRoleCredentialsProvider);
+            StsAssumeRoleCredentialsProvider provider = (StsAssumeRoleCredentialsProvider) providers.get(0);
+            assertEquals(staleTime, provider.staleTime());
+            assertEquals(prefetchTime, provider.prefetchTime());
+        } finally {
+            providers.stream().filter(AutoCloseable.class::isInstance).forEach(provider -> {
+                try {
+                    ((AutoCloseable) provider).close();
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        }
     }
 
     private static class CloseTrackingProvider implements AwsCredentialsProvider, AutoCloseable {

@@ -19,11 +19,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.text.ParseException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
+import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
+import software.amazon.msk.auth.iam.internals.utils.URIUtils;
 
 public class AWS4SignedPayloadGeneratorTest {
     private static final String VALID_HOSTNAME = "b-3.unit-test.abcdef.kafka.us-west-2.amazonaws.com";
@@ -47,5 +55,20 @@ public class AWS4SignedPayloadGeneratorTest {
 
         assertNotNull(signedPayload);
         SignedPayloadValidatorUtils.validatePayload(signedPayload, params);
+    }
+
+    @Test
+    public void testSigningUsesProvidedExpirationTime() throws Exception {
+        AuthenticationRequestParams params = AuthenticationRequestParams
+                .create(VALID_HOSTNAME, credentials, UserAgentUtils.getUserAgentValue());
+        Instant expirationTime = Instant.now().plus(Duration.ofMinutes(4));
+        AWS4SignedPayloadGenerator generator = new AWS4SignedPayloadGenerator();
+
+        SdkHttpFullRequest signedRequest = generator.presignRequest(params, expirationTime);
+        Map<String, List<String>> parameters = URIUtils.parseQueryParams(signedRequest.getUri());
+
+        int expirySeconds = Integer.parseInt(parameters.get(SignerConstant.X_AMZ_EXPIRES).get(0));
+        assertTrue(expirySeconds > 0);
+        assertTrue(expirySeconds <= Duration.ofMinutes(4).toSeconds());
     }
 }

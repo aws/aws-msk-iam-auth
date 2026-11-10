@@ -73,9 +73,11 @@ import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
  *     awsRoleSessionToken={session token}, awsRoleSessionName={session name}, awsStsRegion={region name}
  * 3. Optional arguments to configure retries when we fail to load credentials:
  *     awsMaxRetries={Maximum number of retries}, awsMaxBackOffTimeMs={Maximum back off time between retries in ms}
- * 4. Optional argument to help debug credentials used to establish connections:
+ * 4. Optional arguments to configure credential refresh windows:
+ *     awsCredentialStaleTimeSeconds={seconds}, awsCredentialPrefetchTimeSeconds={seconds}
+ * 5. Optional argument to help debug credentials used to establish connections:
  *     awsDebugCreds={true|false}
- * 5. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
+ * 6. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
@@ -95,13 +97,19 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
     private static final String AWS_MAX_RETRIES = "awsMaxRetries";
     private static final String AWS_MAX_BACK_OFF_TIME_MS = "awsMaxBackOffTimeMs";
     private static final String AWS_REGION_PROVIDER_DEF = "awsMskRegionProvider";
+    private static final String AWS_CREDENTIAL_STALE_TIME_SECONDS = "awsCredentialStaleTimeSeconds";
+    private static final String AWS_CREDENTIAL_PREFETCH_TIME_SECONDS = "awsCredentialPrefetchTimeSeconds";
     private static final String GLOBAL_REGION = "aws-global";
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final int DEFAULT_MAX_BACK_OFF_TIME_MS = 5000;
+    private static final Duration DEFAULT_CREDENTIAL_STALE_TIME = Duration.ofMinutes(5);
+    private static final Duration DEFAULT_CREDENTIAL_PREFETCH_TIME = Duration.ofMinutes(10);
     private static final Duration BASE_DELAY = Duration.ofMillis(500);
 
     private final List<AutoCloseable> closeableProviders;
     private final AwsCredentialsProvider compositeDelegate;
+    private final Duration credentialStaleTime;
+    private final Duration credentialPrefetchTime;
     @Getter(AccessLevel.PACKAGE)
     private final Boolean shouldDebugCreds;
     private final String stsRegion;
@@ -115,7 +123,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
 
     MSKCredentialProvider(ProviderBuilder builder) {
         this(builder.getProviders(), builder.shouldDebugCreds(), builder.getStsRegion(), builder.getMaxRetries(),
-                builder.getMaxBackOffTimeMs(), builder.addDefaultProviders(), builder.getCustomRegionProvider());
+                builder.getMaxBackOffTimeMs(), builder.addDefaultProviders(), builder.getCustomRegionProvider(),
+                builder.getCredentialStaleTime(), builder.getCredentialPrefetchTime());
     }
 
     MSKCredentialProvider(List<AwsCredentialsProvider> providers,
@@ -142,6 +151,21 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                           int maxBackOffTimeMs,
                           boolean addDefaultProviders,
                           ConfigurableRegionProvider customRegionProvider) {
+        this(providers, shouldDebugCreds, stsRegion, maxRetries, maxBackOffTimeMs, addDefaultProviders,
+                customRegionProvider, DEFAULT_CREDENTIAL_STALE_TIME, DEFAULT_CREDENTIAL_PREFETCH_TIME);
+    }
+
+    private MSKCredentialProvider(List<AwsCredentialsProvider> providers,
+                                  Boolean shouldDebugCreds,
+                                  String stsRegion,
+                                  int maxRetries,
+                                  int maxBackOffTimeMs,
+                                  boolean addDefaultProviders,
+                                  ConfigurableRegionProvider customRegionProvider,
+                                  Duration credentialStaleTime,
+                                  Duration credentialPrefetchTime) {
+        this.credentialStaleTime = credentialStaleTime;
+        this.credentialPrefetchTime = credentialPrefetchTime;
         AwsCredentialsProviderChain.Builder chain = AwsCredentialsProviderChain.builder();
         if (addDefaultProviders && !providers.isEmpty()) {
             // Only the LAST configured provider's failure falls through into the
@@ -197,11 +221,32 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
         return AwsCredentialsProviderChain.of(
             EnvironmentVariableCredentialsProvider.create(),
             SystemPropertyCredentialsProvider.create(),
-            WebIdentityTokenFileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
+            createWebIdentityTokenFileCredentialsProvider(credentialStaleTime, credentialPrefetchTime),
             ProfileCredentialsProvider.builder().profileFile(ProfileFileSupplier.defaultSupplier()).build(),
             ContainerCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build(),
-            InstanceProfileCredentialsProvider.builder().asyncCredentialUpdateEnabled(true).build()
+            createInstanceProfileCredentialsProvider(true, credentialStaleTime)
         );
+    }
+
+    static WebIdentityTokenFileCredentialsProvider createWebIdentityTokenFileCredentialsProvider(
+            Duration staleTime, Duration prefetchTime) {
+        return WebIdentityTokenFileCredentialsProvider.builder()
+                .asyncCredentialUpdateEnabled(true)
+                .prefetchTime(prefetchTime)
+                .staleTime(staleTime)
+                .build();
+    }
+
+    static InstanceProfileCredentialsProvider createInstanceProfileCredentialsProvider(
+            boolean asyncCredentialUpdateEnabled, Duration staleTime) {
+        return InstanceProfileCredentialsProvider.builder()
+                .asyncCredentialUpdateEnabled(asyncCredentialUpdateEnabled)
+                .staleTime(staleTime)
+                .build();
+    }
+
+    public Duration getCredentialStaleTime() {
+        return credentialStaleTime;
     }
 
     @Override
@@ -408,6 +453,31 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                     .orElse(DEFAULT_MAX_BACK_OFF_TIME_MS);
         }
 
+        public Duration getCredentialStaleTime() {
+            return getCredentialDuration(AWS_CREDENTIAL_STALE_TIME_SECONDS, DEFAULT_CREDENTIAL_STALE_TIME);
+        }
+
+        public Duration getCredentialPrefetchTime() {
+            return getCredentialDuration(AWS_CREDENTIAL_PREFETCH_TIME_SECONDS, DEFAULT_CREDENTIAL_PREFETCH_TIME);
+        }
+
+        private Duration getCredentialDuration(String option, Duration defaultValue) {
+            Object configuredValue = optionsMap.get(option);
+            if (configuredValue == null) {
+                return defaultValue;
+            }
+
+            try {
+                long seconds = Long.parseLong(configuredValue.toString());
+                if (seconds <= 0) {
+                    throw new NumberFormatException();
+                }
+                return Duration.ofSeconds(seconds);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(option + " must be a positive number of seconds", e);
+            }
+        }
+
         private StsClientBuilder getStsClientBuilder(Region stsRegion, Boolean shouldUseFips) {
             if (stsRegion == Region.AWS_GLOBAL && isDualstackEnabled()) {
                 // The STS endpoint ruleset resolves aws-global + dualstack to
@@ -510,6 +580,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .prefetchTime(getCredentialPrefetchTime())
+                .staleTime(getCredentialStaleTime())
                 .asyncCredentialUpdateEnabled(true)
                 .build();
         }
@@ -529,6 +601,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(stsClient)
                 .refreshRequest(roleRequest)
+                .prefetchTime(getCredentialPrefetchTime())
+                .staleTime(getCredentialStaleTime())
                 .asyncCredentialUpdateEnabled(true)
                 .build();
         }
@@ -547,6 +621,8 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             return StsAssumeRoleCredentialsProvider.builder()
                 .stsClient(getStsClientBuilder(Region.of(stsRegion), shouldUseFips).build())
                 .refreshRequest(roleRequest)
+                .prefetchTime(getCredentialPrefetchTime())
+                .staleTime(getCredentialStaleTime())
                 .asyncCredentialUpdateEnabled(true)
                 .build();
         }

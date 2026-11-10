@@ -21,6 +21,8 @@ import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -58,10 +60,13 @@ import software.amazon.msk.auth.iam.internals.UserAgentUtils;
 public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(IAMOAuthBearerLoginCallbackHandler.class);
     private static final String USER_AGENT_KEY = "User-Agent";
+    private static final Duration DEFAULT_CREDENTIAL_STALE_TIME = Duration.ofMinutes(5);
+    private static final Duration TOKEN_EXPIRATION = Duration.ofMinutes(15);
 
     private final AWS4SignedPayloadGenerator aws4Signer = new AWS4SignedPayloadGenerator();
 
     private AwsCredentialsProvider credentialsProvider;
+    private Duration credentialStaleTime = DEFAULT_CREDENTIAL_STALE_TIME;
     private ConfigurableRegionProvider awsRegionProvider;
     private boolean configured = false;
 
@@ -87,6 +92,7 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
 
         credentialsProvider = configEntry.map(c -> {
             MSKCredentialProvider mskProvider = new MSKCredentialProvider(c.getOptions());
+            credentialStaleTime = mskProvider.getCredentialStaleTime();
             ConfigurableRegionProvider custom = mskProvider.getCustomRegionProvider();
             if (custom != null) {
                 awsRegionProvider = custom;
@@ -152,9 +158,10 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
             throw new IllegalArgumentException("Callback had a token already");
         }
         AwsCredentials awsCredentials = credentialsProvider.resolveCredentials();
+        Instant tokenExpiry = tokenExpiry(awsCredentials, Instant.now(), credentialStaleTime);
 
         // Generate token value i.e. Base64 encoded pre-signed URL string
-        String tokenValue = generateTokenValue(awsCredentials, getCurrentRegion());
+        String tokenValue = generateTokenValue(awsCredentials, getCurrentRegion(), tokenExpiry);
         // Set OAuth token
         callback.token(getOAuthBearerToken(tokenValue));
     }
@@ -166,18 +173,36 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
      * @param region aws region
      * @return a base64 encoded token string
      */
-    private String generateTokenValue(@NonNull final AwsCredentials awsCredentials, @NonNull final Region region) {
+    private String generateTokenValue(@NonNull final AwsCredentials awsCredentials,
+                                      @NonNull final Region region,
+                                      @NonNull final Instant tokenExpiry) {
         final String userAgentValue = UserAgentUtils.getUserAgentValue();
         final AuthenticationRequestParams authenticationRequestParams = AuthenticationRequestParams
                 .create(getHostName(region), awsCredentials, userAgentValue);
 
-        final SdkHttpFullRequest.Builder requestBuilder = aws4Signer.presignRequest(authenticationRequestParams).toBuilder();
+        final SdkHttpFullRequest.Builder requestBuilder =
+                aws4Signer.presignRequest(authenticationRequestParams, tokenExpiry).toBuilder();
         requestBuilder.appendRawQueryParameter(USER_AGENT_KEY, userAgentValue);
         final SdkHttpFullRequest fullRequest = requestBuilder.build();
         String signedUrl = fullRequest.getUri().toString();
         return Base64.getUrlEncoder()
                 .withoutPadding()
                 .encodeToString(signedUrl.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static Instant tokenExpiry(AwsCredentials credentials, Instant now, Duration credentialStaleTime) {
+        Instant tokenExpiry = now.plus(TOKEN_EXPIRATION);
+        Optional<Instant> credentialExpiry = credentials.expirationTime();
+        if (credentialExpiry.isPresent()) {
+            Instant safeCredentialExpiry = credentialExpiry.get().minus(credentialStaleTime);
+            if (safeCredentialExpiry.isBefore(tokenExpiry)) {
+                tokenExpiry = safeCredentialExpiry;
+            }
+        }
+        if (tokenExpiry.isBefore(now.plusSeconds(1))) {
+            throw SdkClientException.create("AWS credentials expire too soon to generate an MSK IAM token");
+        }
+        return tokenExpiry;
     }
 
     /**
@@ -218,4 +243,3 @@ public class IAMOAuthBearerLoginCallbackHandler implements AuthenticateCallbackH
         return "class: " + clazz.getName() + " classloader: " + clazz.getClassLoader().toString();
     }
 }
-
