@@ -52,7 +52,7 @@ The recommended way to use this library is to consume it from maven central whil
   <dependency>
       <groupId>software.amazon.msk</groupId>
       <artifactId>aws-msk-iam-auth</artifactId>
-      <version>2.3.8</version>
+      <version>2.4.0</version>
   </dependency>
   ```
 If you want to use it with a pre-existing Kafka client, you could build the uber jar and place it in the Kafka client's
@@ -697,12 +697,13 @@ public static String UriEncode(CharSequence input, boolean encodeSlash) {
    
 ## Release Notes
 
-### Release 2.3.10
+### Release 2.4.0
 - Add built-in `CnameRegionProvider` that resolves the region by following a hostname's CNAME chain, for DNS layouts where a stable endpoint name is a Route 53 failover CNAME over per-region names in a customer-owned domain
 - Add built-in `LookupDnsRegionProvider` that resolves the region from the resolved IP address of a bootstrap DNS name, for layouts where a stable bootstrap name repoints across regions and the active region is signalled by the network the name resolves into
 - All DNS-backed region providers now serve the last known good region when a refresh fails, instead of falling through to the `DefaultAwsRegionProviderChain`, which cannot see the DNS indirection and so is very likely to resolve the wrong region
 - All DNS-backed region providers now accept `dns.timeout.ms` and `dns.retries`, so an operator can bound how long an unresponsive resolver stalls authentication. The defaults reproduce the JDK's own JNDI DNS defaults, so resolution behaviour is unchanged for anyone who does not set them
 - Region ids read from TXT records are validated before use, so a typo fails with a message naming the record instead of producing a signing region that no endpoint exists for
+- Fixed a resource leak where `MSKCredentialProvider.close()` did not close the default credentials provider chain, leaving background credential refresh threads running after the Kafka client was closed (#257, fixes #256)
 
 ### Release 2.3.9
 - Fix credential resolution failures when dualstack endpoints are enabled via `AWS_USE_DUALSTACK_ENDPOINT`, the `aws.useDualstackEndpoint` system property, or `use_dualstack_endpoint` in the AWS config profile (#252, fixes #248)
