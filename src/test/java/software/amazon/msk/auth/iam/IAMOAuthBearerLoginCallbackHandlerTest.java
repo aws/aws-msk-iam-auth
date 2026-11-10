@@ -20,6 +20,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -37,6 +38,9 @@ import org.apache.kafka.common.security.oauthbearer.OAuthBearerTokenCallback;
 import org.apache.kafka.common.security.scram.ScramCredentialCallback;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
 import software.amazon.msk.auth.iam.internals.utils.URIUtils;
 
@@ -160,6 +164,47 @@ public class IAMOAuthBearerLoginCallbackHandlerTest {
         // Then
         assertTokenValidity(callback.token(), TEST_REGION, accessKey, sessionToken);
         cleanUp();
+    }
+
+    @Test
+    public void tokenExpiryIsCappedByCredentialExpiration() {
+        Instant now = Instant.parse("2026-11-10T12:00:00Z");
+        AwsSessionCredentials credentials = AwsSessionCredentials.builder()
+                .accessKeyId(ACCESS_KEY_VALUE)
+                .secretAccessKey(SECRET_KEY_VALUE)
+                .sessionToken(SESSION_TOKEN)
+                .expirationTime(now.plus(Duration.ofMinutes(10)))
+                .build();
+
+        Instant expiry = IAMOAuthBearerLoginCallbackHandler.tokenExpiry(
+                credentials, now, Duration.ofMinutes(5));
+
+        Assertions.assertEquals(now.plus(Duration.ofMinutes(5)), expiry);
+    }
+
+    @Test
+    public void tokenExpiryRemainsFifteenMinutesForNonExpiringCredentials() {
+        Instant now = Instant.parse("2026-11-10T12:00:00Z");
+        AwsBasicCredentials credentials = AwsBasicCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
+
+        Instant expiry = IAMOAuthBearerLoginCallbackHandler.tokenExpiry(
+                credentials, now, Duration.ofMinutes(5));
+
+        Assertions.assertEquals(now.plus(Duration.ofMinutes(15)), expiry);
+    }
+
+    @Test
+    public void tokenIsNotSignedWhenCredentialsExpireWithinTheStaleWindow() {
+        Instant now = Instant.parse("2026-11-10T12:00:00Z");
+        AwsSessionCredentials credentials = AwsSessionCredentials.builder()
+                .accessKeyId(ACCESS_KEY_VALUE)
+                .secretAccessKey(SECRET_KEY_VALUE)
+                .sessionToken(SESSION_TOKEN)
+                .expirationTime(now.plus(Duration.ofMinutes(4)))
+                .build();
+
+        Assertions.assertThrows(SdkClientException.class, () -> IAMOAuthBearerLoginCallbackHandler.tokenExpiry(
+                credentials, now, Duration.ofMinutes(5)));
     }
 
     @Test

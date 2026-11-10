@@ -197,6 +197,18 @@ This sets the maximum number of retries to `7` and the maximum back off time to 
 
 The retries can be turned off completely by setting `awsMaxRetries` to `"0"`.
 
+### Temporary credential refresh windows
+
+The default credential stale and prefetch windows are 300 and 600 seconds. They can be configured through JAAS options:
+
+```properties
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
+  awsCredentialStaleTimeSeconds="300" \
+  awsCredentialPrefetchTimeSeconds="600";
+```
+
+The stale window is applied to providers that support it; the prefetch window is applied to providers that support asynchronous prefetch. When the credentials expose an expiration time, the generated token expires no later than the credential expiration minus the stale window.
+
 
 ### Custom Region Provider
 

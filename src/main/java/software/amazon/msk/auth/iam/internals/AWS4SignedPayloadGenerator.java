@@ -16,12 +16,12 @@
 package software.amazon.msk.auth.iam.internals;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.time.temporal.ChronoUnit;
 import lombok.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -38,8 +38,8 @@ import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
  * This class is used to generate the AWS Sigv4 signed authentication payload sent by the IAMSaslClient to the broker.
  * It configures a AWSSigner based on the authentication request parameters. It generates a request with the endpoint
  * set to the kafka broker (kafka:// as prefix), action set to kafka-cluster:Connect and the Http method as GET.
- * It then pre-signs the request using the credentials in the authentication request parameters and a expiration period
- * of 15 minutes. Afterwards, the signed request is converted into a key value map with headers and query parameters
+ * It then pre-signs the request using the credentials in the authentication request parameters and an expiration period
+ * of up to 15 minutes. Afterwards, the signed request is converted into a key value map with headers and query parameters
  * acting as keys. Then the key value map is serialized as a JSON object and returned as bytes.
  */
 public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
@@ -50,7 +50,7 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
     private static final String VERSION_KEY = "version";
     private static final String USER_AGENT_KEY = "user-agent";
     private static final String PROTOCOL = "https";
-    private static final int EXPIRY_DURATION_MINUTES = 15;
+    private static final Duration EXPIRY_DURATION = Duration.ofMinutes(15);
 
     @Override
     public byte[] signedPayload(@NonNull AuthenticationRequestParams params) throws PayloadGenerationException {
@@ -70,8 +70,13 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
      * @return presigned request
      */
     public SdkHttpFullRequest presignRequest(@NonNull AuthenticationRequestParams params) {
+        return presignRequest(params, Instant.now().plus(EXPIRY_DURATION));
+    }
+
+    public SdkHttpFullRequest presignRequest(@NonNull AuthenticationRequestParams params,
+                                             @NonNull Instant expirationTime) {
         SdkHttpFullRequest request = createRequestForSigning(params);
-        Aws4PresignerParams signingParams = createSigningParams(params);
+        Aws4PresignerParams signingParams = createSigningParams(params, expirationTime);
 
         return Aws4Signer.create().presign(request, signingParams);
     }
@@ -85,17 +90,13 @@ public class AWS4SignedPayloadGenerator implements SignedPayloadGenerator {
             .build();
     }
 
-    private Aws4PresignerParams createSigningParams(AuthenticationRequestParams params) {
+    private Aws4PresignerParams createSigningParams(AuthenticationRequestParams params, Instant expirationTime) {
         return Aws4PresignerParams.builder()
             .awsCredentials(params.getAwsCredentials())
-            .expirationTime(getExpiry())
+            .expirationTime(expirationTime)
             .signingRegion(params.getRegion())
             .signingName(params.getServiceScope())
             .build();
-    }
-
-    private Instant getExpiry() {
-        return Instant.now().plus(EXPIRY_DURATION_MINUTES, ChronoUnit.MINUTES);
     }
 
     private byte[] toPayloadBytes(SdkHttpFullRequest request, AuthenticationRequestParams params) throws IOException {
