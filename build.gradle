@@ -84,6 +84,12 @@ dependencies {
         }
     }
 
+    // Netty CVE fixes
+    // CVE-2025-67735, CVE-2026-33870: Upgrade netty-codec-http to 4.1.132+
+    runtimeOnly('io.netty:netty-codec-http:4.1.132.Final')
+    // CVE-2026-33871: Upgrade netty-codec-http2 to 4.1.132+
+    runtimeOnly('io.netty:netty-codec-http2:4.1.132.Final')
+
     //test dependencies
     // Deliberately older than the compileOnly pin above: the customer supplies
     // kafka-clients at runtime, so running the suite against an old client is
