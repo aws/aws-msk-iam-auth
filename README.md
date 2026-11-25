@@ -165,6 +165,53 @@ The Default Credential Provider Chain must contain the permissions necessary to 
 For example, if the client is an EC2 instance, its instance profile should have permission to assume the
  `msk_client_role`.
 
+### Using AWS IAM Roles Anywhere (without `aws_signing_helper`)
+Workloads running outside of AWS (on-premises servers, containers, or other clouds) can authenticate directly with
+AWS IAM Roles Anywhere using X.509 certificates via the in-process
+[`roles-anywhere-java`](https://github.com/aws-sdk-plugin/roles-anywhere-java) plugin, without needing to install or
+configure the external `aws_signing_helper` binary or a `credential_process` profile.
+
+Certificate and private key files are re-read on every credential refresh, so on-disk certificate rotation is picked up
+automatically without restarting the Kafka client.
+
+```properties
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required \
+  awsRolesAnywhereTrustAnchorArn="arn:aws:rolesanywhere:us-west-2:123456789012:trust-anchor/your-trust-anchor-id" \
+  awsRolesAnywhereProfileArn="arn:aws:rolesanywhere:us-west-2:123456789012:profile/your-profile-id" \
+  awsRolesAnywhereRoleArn="arn:aws:iam::123456789012:role/msk_client_role" \
+  awsRolesAnywhereCertificate="/path/to/certificate.pem" \
+  awsRolesAnywherePrivateKey="/path/to/private-key.pem" \
+  awsRolesAnywhereRoleSessionName="msk-client" \
+  awsAddDefaultProviders="false";
+```
+
+#### Required Parameters
+
+| Parameter | Meaning |
+|---|---|
+| `awsRolesAnywhereTrustAnchorArn` | ARN of the IAM Roles Anywhere trust anchor. |
+| `awsRolesAnywhereProfileArn` | ARN of the IAM Roles Anywhere profile. |
+| `awsRolesAnywhereRoleArn` | ARN of the IAM role to assume. |
+| `awsRolesAnywhereCertificate` | Path to the PEM-encoded X.509 client certificate file. |
+| `awsRolesAnywherePrivateKey` | Path to the PEM-encoded PKCS#8 private key file. |
+
+#### Optional Parameters
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `awsRolesAnywherePrivateKeyAlgorithm` | `RSA` | JCA key algorithm name (e.g., `RSA`, `EC`, `EdDSA`). |
+| `awsRolesAnywherePrivateKeyPassword` | none | Password for decrypting an encrypted PKCS#8 private key. |
+| `awsRolesAnywhereCertificateChain` | none | Path to a PEM-encoded intermediate certificate chain file. |
+| `awsRolesAnywhereRegion` | inferred | AWS region for IAM Roles Anywhere. When omitted, resolved from `aws.region`, `AWS_REGION`, or inferred from the trust anchor and profile ARNs. |
+| `awsRolesAnywhereRoleSessionName` | none | Static role session name. Recommended so MSK re-authentication does not fail if the certificate serial number changes on rotation. |
+| `awsRolesAnywhereDurationSeconds` | `3600` | Session duration in seconds (`900`–`43200`). |
+| `awsRolesAnywhereEndpoint` | none | Custom IAM Roles Anywhere endpoint URI (e.g., for VPC endpoints or testing). |
+| `awsRolesAnywhereDualStackEnabled` | unset | Set to `"true"` or `"false"` to control dual-stack IPv4/IPv6 endpoint usage. |
+| `awsRolesAnywhereStaleTimeSeconds` | `300` | Seconds before credential expiration to trigger background refresh. |
+| `awsRolesAnywhereMinRefreshIntervalSeconds` | `300` | Minimum interval in seconds between refresh attempts (`0` to disable, otherwise at least `30`). |
+
+Setting `awsShouldUseFips="true"` also enables FIPS endpoints for IAM Roles Anywhere.
+
 ### Figuring out whether or not to use default credentials
 
 When you want the MSK client to connect to MSK using credentials not found in the [AWS Default Credentials Provider Chain][DefaultCreds], you can specify an `awsProfileName` containing the credential profile to use, or an `awsRoleArn` to indicate an IAM Role’s ARN to assume using credentials in the Default Credential Provider Chain.  These parameters are optional, and if they are not set the MSK client will use credentials from the Default Credential Provider Chain. There is no need to specify them if you intend to use an IAM role associated with an AWS compute service, such as EC2 or ECS to authenticate to MSK.

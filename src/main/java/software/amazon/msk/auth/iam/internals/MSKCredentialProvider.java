@@ -71,11 +71,19 @@ import software.amazon.msk.auth.iam.internals.region.ConfigurableRegionProvider;
  *    and optionally AWS IAM role session name and AWS region for the STS endpoint:
  *     awsRoleArn={IAM Role ARN}, awsRoleAccessKeyId={access key id}, awsRoleSecretAccessKey={secret access key},
  *     awsRoleSessionToken={session token}, awsRoleSessionName={session name}, awsStsRegion={region name}
- * 3. Optional arguments to configure retries when we fail to load credentials:
+ * 3. AWS IAM Roles Anywhere using X.509 certificates (in-process, without requiring aws_signing_helper):
+ *     awsRolesAnywhereTrustAnchorArn={Trust Anchor ARN}, awsRolesAnywhereProfileArn={Profile ARN},
+ *     awsRolesAnywhereRoleArn={IAM Role ARN}, awsRolesAnywhereCertificate={cert PEM path},
+ *     awsRolesAnywherePrivateKey={private key PEM path}, plus optional parameters
+ *     (awsRolesAnywherePrivateKeyAlgorithm, awsRolesAnywherePrivateKeyPassword,
+ *     awsRolesAnywhereCertificateChain, awsRolesAnywhereRegion, awsRolesAnywhereRoleSessionName,
+ *     awsRolesAnywhereDurationSeconds, awsRolesAnywhereEndpoint, awsRolesAnywhereDualStackEnabled,
+ *     awsRolesAnywhereStaleTimeSeconds, awsRolesAnywhereMinRefreshIntervalSeconds).
+ * 4. Optional arguments to configure retries when we fail to load credentials:
  *     awsMaxRetries={Maximum number of retries}, awsMaxBackOffTimeMs={Maximum back off time between retries in ms}
- * 4. Optional argument to help debug credentials used to establish connections:
+ * 5. Optional argument to help debug credentials used to establish connections:
  *     awsDebugCreds={true|false}
- * 5. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
+ * 6. If no options is provided, the DefaultAWSCredentialsProviderChain is used.
  * The DefaultAWSCredentialProviderChain can be pointed to credentials in many different ways:
  * <a href="https://docs.aws.amazon.com/sdk-for-java/v1/developer-guide/credentials.html">Working with AWS Credentials</a>
  */
@@ -360,6 +368,7 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
             List<AwsCredentialsProvider> providers = new ArrayList<>();
             getProfileProvider().ifPresent(providers::add);
             getStsRoleProvider().ifPresent(providers::add);
+            getRolesAnywhereProvider().ifPresent(providers::add);
             return providers;
         }
 
@@ -549,6 +558,19 @@ public class MSKCredentialProvider implements AwsCredentialsProvider, AutoClosea
                 .refreshRequest(roleRequest)
                 .asyncCredentialUpdateEnabled(true)
                 .build();
+        }
+
+        private Optional<AwsCredentialsProvider> getRolesAnywhereProvider() {
+            if (!RolesAnywhereCredentialProviderFactory.isConfigured(optionsMap)) {
+                return Optional.empty();
+            }
+            return Optional.of(createRolesAnywhereCredentialProvider(optionsMap, shouldUseFips()));
+        }
+
+        AwsCredentialsProvider createRolesAnywhereCredentialProvider(
+            Map<String, ?> options,
+            boolean shouldUseFips) {
+            return RolesAnywhereCredentialProviderFactory.create(options, shouldUseFips);
         }
     }
 }

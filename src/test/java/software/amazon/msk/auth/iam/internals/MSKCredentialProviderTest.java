@@ -1014,4 +1014,126 @@ public class MSKCredentialProviderTest {
             assertTrue(provider.getCustomRegionProvider() instanceof TestRegionProvider);
         }, ACCESS_KEY_VALUE, SECRET_KEY_VALUE);
     }
+
+    @Test
+    public void testRolesAnywhereCredentials() {
+        CloseTrackingSessionProvider mockRolesAnywhereProvider = new CloseTrackingSessionProvider(
+                AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-id");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PROFILE_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:profile/profile-id");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_ROLE_ARN,
+                "arn:aws:iam::123456789012:role/test-role");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_CERTIFICATE, "/tmp/cert.pem");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PRIVATE_KEY, "/tmp/key.pem");
+        optionsMap.put("awsShouldUseFips", "true");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
+            @Override
+            AwsCredentialsProvider createRolesAnywhereCredentialProvider(Map<String, ?> options, boolean shouldUseFips) {
+                assertTrue(shouldUseFips);
+                assertEquals(optionsMap, options);
+                return mockRolesAnywhereProvider;
+            }
+        };
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        assertFalse(provider.getShouldDebugCreds());
+
+        AwsCredentials credentials = provider.resolveCredentials();
+        validateBasicSessionCredentials(credentials);
+
+        provider.close();
+        assertEquals(1, mockRolesAnywhereProvider.closeCount);
+    }
+
+    @Test
+    public void testRolesAnywhereWithRetriableErrors() {
+        AwsCredentialsProvider mockRolesAnywhereProvider = Mockito.mock(
+                AwsCredentialsProvider.class, Mockito.withSettings().extraInterfaces(AutoCloseable.class));
+        Mockito.when(mockRolesAnywhereProvider.resolveIdentity())
+                .thenThrow(SdkClientException.create("transient-1"), SdkClientException.create("transient-2"))
+                .thenAnswer(i -> CompletableFuture.completedFuture(
+                        AwsSessionCredentials.create(ACCESS_KEY_VALUE, SECRET_KEY_VALUE, SESSION_TOKEN)));
+
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-id");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PROFILE_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:profile/profile-id");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_ROLE_ARN,
+                "arn:aws:iam::123456789012:role/test-role");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_CERTIFICATE, "/tmp/cert.pem");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PRIVATE_KEY, "/tmp/key.pem");
+        optionsMap.put(AWS_ADD_DEFAULT_PROVIDERS, "false");
+        optionsMap.put("awsMaxBackOffTimeMs", "10");
+
+        MSKCredentialProvider.ProviderBuilder providerBuilder = new MSKCredentialProvider.ProviderBuilder(optionsMap) {
+            @Override
+            AwsCredentialsProvider createRolesAnywhereCredentialProvider(Map<String, ?> options, boolean shouldUseFips) {
+                assertFalse(shouldUseFips);
+                return mockRolesAnywhereProvider;
+            }
+        };
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(providerBuilder);
+        AwsCredentials credentials = provider.resolveCredentials();
+        validateBasicSessionCredentials(credentials);
+
+        provider.close();
+        Mockito.verify(mockRolesAnywhereProvider, times(3)).resolveIdentity();
+    }
+
+    @Test
+    public void testRolesAnywherePartialConfigurationFailsFast() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/ta-id");
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> new MSKCredentialProvider(optionsMap));
+        assertTrue(ex.getMessage().contains(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PROFILE_ARN));
+        assertTrue(ex.getMessage().contains(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_ROLE_ARN));
+        assertTrue(ex.getMessage().contains(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_CERTIFICATE));
+        assertTrue(ex.getMessage().contains(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PRIVATE_KEY));
+    }
+
+    @Test
+    public void testRolesAnywhereRealProviderConstructionAndClose() {
+        Map<String, String> optionsMap = new HashMap<>();
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:trust-anchor/12345678-1234-1234-1234-123456789012");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PROFILE_ARN,
+                "arn:aws:rolesanywhere:us-east-1:123456789012:profile/12345678-1234-1234-1234-123456789012");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_ROLE_ARN,
+                "arn:aws:iam::123456789012:role/test-role");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_CERTIFICATE, "/tmp/cert.pem");
+        optionsMap.put(RolesAnywhereCredentialProviderFactory.AWS_ROLES_ANYWHERE_PRIVATE_KEY, "/tmp/key.pem");
+        optionsMap.put(AWS_ADD_DEFAULT_PROVIDERS, "false");
+
+        MSKCredentialProvider provider = new MSKCredentialProvider(optionsMap);
+        provider.close();
+    }
+
+    private static class CloseTrackingSessionProvider implements AwsCredentialsProvider, AutoCloseable {
+        private final AwsCredentials credentials;
+        private int closeCount;
+
+        CloseTrackingSessionProvider(AwsCredentials credentials) {
+            this.credentials = credentials;
+        }
+
+        @Override
+        public AwsCredentials resolveCredentials() {
+            return credentials;
+        }
+
+        @Override
+        public void close() {
+            closeCount++;
+        }
+    }
 }
