@@ -65,6 +65,7 @@ dependencies {
     implementation('software.amazon.awssdk:sso')
     implementation('software.amazon.awssdk:ssooidc')
     implementation('software.amazon.awssdk:sts')
+    implementation('software.amazon.rolesanywhere.plugin:roles-anywhere-java:1.1.0')
     implementation('com.fasterxml.jackson.core:jackson-databind:2.22.1')
     implementation('org.slf4j:slf4j-api:1.7.36')
 
